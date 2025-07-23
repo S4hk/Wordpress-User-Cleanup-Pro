@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: User Cleanup Pro
-Description: Advanced user cleanup tool for administrators. Delete users by missing names, email domains, or roles, in safe batches with progress bar. Never deletes administrators.
-Version: 1.0.1
+Description: Advanced user cleanup tool for administrators. Delete users by missing names, email domains, or roles, in safe batches with progress bar. Supports millions of users with memory-efficient scanning. Never deletes administrators.
+Version: 1.1.0
 Author: OpenAI GPT-4
 Requires at least: 5.6
 License: GPL2+
@@ -21,7 +21,11 @@ class UCP_User_Cleanup_Pro {
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_ucp_start_deletion', array( $this, 'ajax_start_deletion' ) );
+        add_action( 'wp_ajax_ucp_scan_batch', array( $this, 'ajax_scan_batch' ) );
         add_action( 'wp_ajax_ucp_run_batch', array( $this, 'ajax_run_batch' ) );
+        
+        // Cleanup transients on plugin deactivation
+        register_deactivation_hook( __FILE__, array( $this, 'cleanup_transients' ) );
     }
 
     public function add_settings_page() {
@@ -51,7 +55,8 @@ class UCP_User_Cleanup_Pro {
         $output['delete_unlisted_domains'] = ! empty( $input['delete_unlisted_domains'] ) ? 1 : 0;
         $output['delete_role'] = ( isset( $input['delete_role'] ) && $input['delete_role'] !== '' ) ? sanitize_text_field( $input['delete_role'] ) : '';
         $batch_size = intval( $input['batch_size'] );
-        $output['batch_size'] = in_array( $batch_size, array( 100, 500, 1000 ) ) ? $batch_size : 100;
+        // Expanded batch size options for better performance with large datasets
+        $output['batch_size'] = in_array( $batch_size, array( 50, 100, 250, 500, 1000 ) ) ? $batch_size : 100;
         return $output;
     }
 
@@ -100,10 +105,13 @@ class UCP_User_Cleanup_Pro {
                         <th><?php esc_html_e( 'Batch size for deletion', 'user-cleanup-pro' ); ?></th>
                         <td>
                             <select name="<?php echo self::OPTION_KEY; ?>[batch_size]">
-                                <option value="100" <?php selected( $batch_size, 100 ); ?>>100</option>
-                                <option value="500" <?php selected( $batch_size, 500 ); ?>>500</option>
-                                <option value="1000" <?php selected( $batch_size, 1000 ); ?>>1000</option>
+                                <option value="50" <?php selected( $batch_size, 50 ); ?>>50 (Slower, safest)</option>
+                                <option value="100" <?php selected( $batch_size, 100 ); ?>>100 (Recommended)</option>
+                                <option value="250" <?php selected( $batch_size, 250 ); ?>>250 (Faster)</option>
+                                <option value="500" <?php selected( $batch_size, 500 ); ?>>500 (Fast)</option>
+                                <option value="1000" <?php selected( $batch_size, 1000 ); ?>>1000 (Very fast, advanced)</option>
                             </select>
+                            <p class="description"><?php esc_html_e( 'Number of users to delete per batch. Higher numbers are faster but use more server resources.', 'user-cleanup-pro' ); ?></p>
                         </td>
                     </tr>
                 </table>
@@ -111,7 +119,10 @@ class UCP_User_Cleanup_Pro {
             </form>
             <hr>
             <h2><?php esc_html_e( 'Start User Cleanup', 'user-cleanup-pro' ); ?></h2>
-            <button id="ucp-start-deletion" class="button button-primary"><?php esc_html_e( 'Start Deletion', 'user-cleanup-pro' ); ?></button>
+            <div class="notice notice-warning inline">
+                <p><strong><?php esc_html_e( 'Warning:', 'user-cleanup-pro' ); ?></strong> <?php esc_html_e( 'This action cannot be undone. Please backup your database before proceeding. The process will scan all users first, then delete them in batches.', 'user-cleanup-pro' ); ?></p>
+            </div>
+            <button id="ucp-start-deletion" class="button button-primary"><?php esc_html_e( 'Start Deletion Process', 'user-cleanup-pro' ); ?></button>
             <div id="ucp-progress-wrapper" style="display:none; margin-top:10px;">
                 <div id="ucp-progress-bar" style="background:#e0e0e0; border-radius:5px; height:25px; width:400px; margin-bottom:10px;">
                     <div id="ucp-progress-inner" style="background:#0073aa; height:100%; width:0%; border-radius:5px;"></div>
@@ -122,24 +133,38 @@ class UCP_User_Cleanup_Pro {
         </div>
         <script>
         jQuery(document).ready(function($) {
-            var allIds = [], total = 0, deleted = 0, batchSize = 100, isRunning = false;
+            var total = 0, deleted = 0, batchSize = 100, isRunning = false, isScanning = false;
+            
             function updateProgress() {
                 var percent = total > 0 ? Math.round( deleted / total * 100 ) : 0;
                 $('#ucp-progress-inner').css('width', percent + '%');
-                $('#ucp-progress-label').text(deleted + ' deleted / ' + total + ' total');
+                if ( isScanning ) {
+                    $('#ucp-progress-label').text('Scanning users...');
+                } else {
+                    $('#ucp-progress-label').text(deleted + ' deleted / ' + total + ' total (' + percent + '%)');
+                }
             }
+            
             function logMessage(msg) {
                 $('#ucp-log').append($('<div/>').text(msg));
                 $('#ucp-log').scrollTop(99999);
             }
+            
             $('#ucp-start-deletion').on('click', function(e){
                 e.preventDefault();
                 if ( isRunning ) return;
+                
                 isRunning = true;
+                isScanning = true;
+                deleted = 0;
+                total = 0;
+                
                 $('#ucp-log').empty();
-                $('#ucp-progress-label').text('Scanning users...');
+                $('#ucp-progress-label').text('Starting scan...');
                 $('#ucp-progress-inner').css('width','0%');
                 $('#ucp-progress-wrapper').show();
+                $(this).prop('disabled', true);
+                
                 $.post(
                     ajaxurl,
                     { action:'ucp_start_deletion', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>' },
@@ -147,50 +172,117 @@ class UCP_User_Cleanup_Pro {
                         if ( ! resp.success ) {
                             logMessage('Failed: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
                             isRunning = false;
+                            isScanning = false;
+                            $('#ucp-start-deletion').prop('disabled', false);
                             return;
                         }
-                        allIds   = resp.data.ids;
-                        total    = resp.data.total;
-                        batchSize= resp.data.batch_size;
-                        deleted  = 0;
-                        updateProgress();
-                        if ( total === 0 ) {
-                            $('#ucp-progress-label').text('No users to delete.');
-                            isRunning = false;
-                        } else {
-                            logMessage(resp.data.message || 'Ready.');
-                            runBatch();
+                        
+                        if ( resp.data.scanning ) {
+                            batchSize = resp.data.batch_size;
+                            logMessage(resp.data.message || 'Starting scan...');
+                            runScan();
                         }
                     }
-                );
-            });
-            function runBatch() {
-                if ( allIds.length === 0 ) {
-                    $('#ucp-progress-label').text('Completed: ' + deleted + ' users deleted.');
+                ).fail(function() {
+                    logMessage('Network error occurred.');
                     isRunning = false;
-                    return;
-                }
+                    isScanning = false;
+                    $('#ucp-start-deletion').prop('disabled', false);
+                });
+            });
+            
+            function runScan() {
+                if ( ! isScanning ) return;
+                
                 $.post(
                     ajaxurl,
-                    { action:'ucp_run_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>', ids: allIds, batch_size: batchSize },
+                    { action:'ucp_scan_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>' },
                     function(resp) {
                         if ( ! resp.success ) {
-                            logMessage('Error: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
+                            logMessage('Scan error: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
                             isRunning = false;
+                            isScanning = false;
+                            $('#ucp-start-deletion').prop('disabled', false);
                             return;
                         }
+                        
+                        if ( resp.data.scan_complete ) {
+                            // Scanning finished
+                            isScanning = false;
+                            total = resp.data.total || 0;
+                            batchSize = resp.data.batch_size || 100;
+                            
+                            logMessage(resp.data.message || 'Scan completed.');
+                            
+                            if ( total === 0 ) {
+                                $('#ucp-progress-label').text('No users to delete.');
+                                isRunning = false;
+                                $('#ucp-start-deletion').prop('disabled', false);
+                            } else {
+                                updateProgress();
+                                logMessage('Starting deletion process...');
+                                setTimeout(runDeletion, 500);
+                            }
+                        } else {
+                            // Continue scanning
+                            if ( resp.data.message ) {
+                                var lastMessage = $('#ucp-log div:last').text();
+                                if ( lastMessage.indexOf('Scanned') === 0 ) {
+                                    $('#ucp-log div:last').text(resp.data.message);
+                                } else {
+                                    logMessage(resp.data.message);
+                                }
+                            }
+                            setTimeout(runScan, 100); // Short delay between scan batches
+                        }
+                    }
+                ).fail(function() {
+                    logMessage('Network error during scan.');
+                    isRunning = false;
+                    isScanning = false;
+                    $('#ucp-start-deletion').prop('disabled', false);
+                });
+            }
+            
+            function runDeletion() {
+                if ( isScanning ) return;
+                
+                $.post(
+                    ajaxurl,
+                    { action:'ucp_run_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>', batch_size: batchSize },
+                    function(resp) {
+                        if ( ! resp.success ) {
+                            logMessage('Deletion error: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
+                            isRunning = false;
+                            $('#ucp-start-deletion').prop('disabled', false);
+                            return;
+                        }
+                        
                         var deletedNow = resp.data.deleted || 0;
                         deleted += deletedNow;
+                        
                         if ( resp.data.log && resp.data.log.length ) {
-                            for (var i=0;i<resp.data.log.length;i++) {
+                            for (var i = 0; i < resp.data.log.length; i++) {
                                 logMessage(resp.data.log[i]);
                             }
                         }
-                        allIds = resp.data.remaining_ids;
+                        
                         updateProgress();
-                        setTimeout(runBatch, 350);
+                        
+                        if ( resp.data.complete ) {
+                            $('#ucp-progress-label').text('Completed: ' + deleted + ' users deleted.');
+                            logMessage('Deletion process completed.');
+                            isRunning = false;
+                            $('#ucp-start-deletion').prop('disabled', false);
+                        } else {
+                            setTimeout(runDeletion, 500); // Half-second delay between deletion batches
+                        }
                     }
-                );
+                ).fail(function() {
+                    logMessage('Network error during deletion.');
+                    isRunning = false;
+                    $('#ucp-start-deletion').prop('disabled', false);
+                });
             }
         });
         </script>
@@ -217,6 +309,12 @@ class UCP_User_Cleanup_Pro {
     public function ajax_start_deletion() {
         check_ajax_referer( 'ucp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
+        
+        // Set longer execution time for large operations
+        if ( ! ini_get( 'safe_mode' ) ) {
+            set_time_limit( 300 ); // 5 minutes
+        }
+        
         $options = get_option( self::OPTION_KEY );
         $delete_no_name          = ! empty( $options['delete_no_name'] );
         $delete_unlisted_domains = ! empty( $options['delete_unlisted_domains'] );
@@ -224,35 +322,114 @@ class UCP_User_Cleanup_Pro {
         $delete_role             = isset( $options['delete_role'] ) ? sanitize_text_field( $options['delete_role'] ) : '';
         $batch_size              = isset( $options['batch_size'] ) ? intval( $options['batch_size'] ) : 100;
 
-        $user_ids_to_delete = array();
-        $args = array(
-            'fields'     => 'ID',
-            'number'     => 999999,
-            'role__not_in' => array( 'administrator' ),
-        );
-        $user_query = new WP_User_Query( $args );
-        $all_users  = $user_query->get_results();
+        // Clean allowed domains array
+        $allowed_domains = array_filter( array_map( 'trim', $allowed_domains ) );
 
-        foreach ( $all_users as $user_id ) {
-            $user = get_userdata( $user_id );
-            if ( in_array( 'administrator', (array)$user->roles, true ) ) continue;
-            if ( $delete_role && in_array( $delete_role, (array)$user->roles, true ) ) {
-                $user_ids_to_delete[] = $user_id;
+        // Start scanning process - store scanning state in transient
+        delete_transient( 'ucp_scan_state' );
+        delete_transient( 'ucp_user_ids_to_delete' );
+        
+        $scan_state = array(
+            'offset' => 0,
+            'total_scanned' => 0,
+            'total_to_delete' => 0,
+            'scan_batch_size' => 1000, // Scan in smaller batches for memory efficiency
+            'criteria' => array(
+                'delete_no_name' => $delete_no_name,
+                'delete_unlisted_domains' => $delete_unlisted_domains,
+                'allowed_domains' => $allowed_domains,
+                'delete_role' => $delete_role
+            )
+        );
+        
+        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        
+        wp_send_json_success( array(
+            'scanning' => true,
+            'batch_size' => $batch_size,
+            'message' => 'Starting user scan...'
+        ) );
+    }
+
+    public function ajax_scan_batch() {
+        check_ajax_referer( 'ucp_ajax_nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
+        
+        // Set longer execution time
+        if ( ! ini_get( 'safe_mode' ) ) {
+            set_time_limit( 60 ); // 1 minute per scan batch
+        }
+        
+        $scan_state = get_transient( 'ucp_scan_state' );
+        if ( ! $scan_state ) {
+            wp_send_json_error( array( 'message' => 'Scan state lost. Please restart.' ) );
+        }
+        
+        $criteria = $scan_state['criteria'];
+        $offset = $scan_state['offset'];
+        $scan_batch_size = $scan_state['scan_batch_size'];
+        
+        // Get batch of users
+        $args = array(
+            'fields'       => array( 'ID', 'user_email', 'user_login' ),
+            'number'       => $scan_batch_size,
+            'offset'       => $offset,
+            'role__not_in' => array( 'administrator' ),
+            'orderby'      => 'ID',
+            'order'        => 'ASC'
+        );
+        
+        $user_query = new WP_User_Query( $args );
+        $users = $user_query->get_results();
+        
+        if ( empty( $users ) ) {
+            // Scanning complete
+            $existing_ids = get_transient( 'ucp_user_ids_to_delete' );
+            $total_to_delete = is_array( $existing_ids ) ? count( $existing_ids ) : 0;
+            
+            delete_transient( 'ucp_scan_state' );
+            
+            wp_send_json_success( array(
+                'scan_complete' => true,
+                'total' => $total_to_delete,
+                'batch_size' => get_option( self::OPTION_KEY )['batch_size'] ?? 100,
+                'message' => $total_to_delete > 0 
+                    ? "Scan complete. Found {$total_to_delete} users to delete." 
+                    : 'Scan complete. No users found matching criteria.'
+            ) );
+        }
+        
+        $current_batch_ids = array();
+        
+        foreach ( $users as $user ) {
+            $user_id = $user->ID;
+            
+            // Double-check not admin (safety measure)
+            $user_obj = get_userdata( $user_id );
+            if ( ! $user_obj || in_array( 'administrator', (array)$user_obj->roles, true ) ) {
                 continue;
             }
-            if ( $delete_no_name ) {
+            
+            $should_delete = false;
+            
+            // Check role deletion criteria first (most efficient)
+            if ( $criteria['delete_role'] && in_array( $criteria['delete_role'], (array)$user_obj->roles, true ) ) {
+                $should_delete = true;
+            }
+            // Check name criteria
+            elseif ( $criteria['delete_no_name'] ) {
                 $first = get_user_meta( $user_id, 'first_name', true );
                 $last  = get_user_meta( $user_id, 'last_name', true );
                 if ( ( empty( $first ) || trim( $first ) === '' ) && ( empty( $last ) || trim( $last ) === '' ) ) {
-                    $user_ids_to_delete[] = $user_id;
-                    continue;
+                    $should_delete = true;
                 }
             }
-            if ( $delete_unlisted_domains && ! empty( $allowed_domains ) ) {
+            
+            // Check domain criteria
+            if ( ! $should_delete && $criteria['delete_unlisted_domains'] && ! empty( $criteria['allowed_domains'] ) ) {
                 $email = strtolower( $user->user_email );
                 $valid = false;
-                foreach ( $allowed_domains as $domain ) {
-                    $domain = trim( $domain );
+                foreach ( $criteria['allowed_domains'] as $domain ) {
                     if ( $domain === '' ) continue;
                     if ( substr( $email, -strlen( '@' . $domain ) ) === '@' . $domain ) {
                         $valid = true;
@@ -260,55 +437,124 @@ class UCP_User_Cleanup_Pro {
                     }
                 }
                 if ( ! $valid ) {
-                    $user_ids_to_delete[] = $user_id;
-                    continue;
+                    $should_delete = true;
                 }
             }
+            
+            if ( $should_delete ) {
+                $current_batch_ids[] = $user_id;
+            }
         }
-        $user_ids_to_delete = array_unique( $user_ids_to_delete );
+        
+        // Store found IDs
+        if ( ! empty( $current_batch_ids ) ) {
+            $existing_ids = get_transient( 'ucp_user_ids_to_delete' );
+            if ( ! is_array( $existing_ids ) ) {
+                $existing_ids = array();
+            }
+            $existing_ids = array_merge( $existing_ids, $current_batch_ids );
+            set_transient( 'ucp_user_ids_to_delete', $existing_ids, HOUR_IN_SECONDS );
+        }
+        
+        // Update scan state
+        $scan_state['offset'] += $scan_batch_size;
+        $scan_state['total_scanned'] += count( $users );
+        $scan_state['total_to_delete'] += count( $current_batch_ids );
+        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        
         wp_send_json_success( array(
-            'total'      => count( $user_ids_to_delete ),
-            'batch_size' => $batch_size,
-            'ids'        => $user_ids_to_delete,
-            'message'    => count( $user_ids_to_delete ) ? 'Ready to delete ' . count( $user_ids_to_delete ) . ' users.' : 'No users to delete.',
+            'scan_complete' => false,
+            'scanned' => $scan_state['total_scanned'],
+            'found' => $scan_state['total_to_delete'],
+            'batch_found' => count( $current_batch_ids ),
+            'message' => "Scanned {$scan_state['total_scanned']} users, found {$scan_state['total_to_delete']} to delete..."
         ) );
     }
 
     public function ajax_run_batch() {
         check_ajax_referer( 'ucp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
-        $ids = isset( $_POST['ids'] ) && is_array( $_POST['ids'] ) ? array_map( 'intval', $_POST['ids'] ) : array();
+        
+        // Set execution time limit
+        if ( ! ini_get( 'safe_mode' ) ) {
+            set_time_limit( 120 ); // 2 minutes per deletion batch
+        }
+        
         $batch_size = isset( $_POST['batch_size'] ) ? intval( $_POST['batch_size'] ) : 100;
-        if ( empty( $ids ) ) {
+        
+        // Get IDs from transient storage
+        $all_ids = get_transient( 'ucp_user_ids_to_delete' );
+        if ( ! is_array( $all_ids ) || empty( $all_ids ) ) {
             wp_send_json_success( array(
                 'deleted' => 0,
-                'remaining_ids' => array(),
+                'remaining' => 0,
                 'log' => array( 'No users left to delete.' ),
+                'complete' => true
             ) );
         }
-        $to_delete = array_slice( $ids, 0, $batch_size );
-        $remaining = array_slice( $ids, $batch_size );
+        
+        $to_delete = array_slice( $all_ids, 0, $batch_size );
+        $remaining_ids = array_slice( $all_ids, $batch_size );
+        
         $deleted_count = 0;
         $log = array();
+        
         foreach ( $to_delete as $user_id ) {
             $user = get_userdata( $user_id );
-            if ( ! $user ) continue;
-            if ( in_array( 'administrator', (array)$user->roles, true ) ) {
-                $log[] = "Skipped admin user ID {$user_id}.";
+            if ( ! $user ) {
+                $log[] = "User ID {$user_id} not found (already deleted?).";
                 continue;
             }
-            global $wpdb;
-            $wpdb->delete( $wpdb->usermeta, array( 'user_id' => $user_id ) );
-            require_once ABSPATH . 'wp-admin/includes/user.php';
-            wp_delete_user( $user_id );
-            $deleted_count++;
-            $log[] = "Deleted user ID {$user_id} ({$user->user_login}).";
+            
+            // Final safety check - never delete administrators
+            if ( in_array( 'administrator', (array)$user->roles, true ) ) {
+                $log[] = "SAFETY: Skipped admin user ID {$user_id}.";
+                continue;
+            }
+            
+            // Perform deletion with error handling
+            try {
+                // Delete user metadata first
+                global $wpdb;
+                $wpdb->delete( $wpdb->usermeta, array( 'user_id' => $user_id ), array( '%d' ) );
+                
+                // Delete the user
+                require_once ABSPATH . 'wp-admin/includes/user.php';
+                $result = wp_delete_user( $user_id );
+                
+                if ( $result ) {
+                    $deleted_count++;
+                    $log[] = "Deleted user ID {$user_id} ({$user->user_login}).";
+                } else {
+                    $log[] = "Failed to delete user ID {$user_id} ({$user->user_login}).";
+                }
+            } catch ( Exception $e ) {
+                $log[] = "Error deleting user ID {$user_id}: " . $e->getMessage();
+            }
+            
+            // Memory cleanup
+            wp_cache_delete( $user_id, 'users' );
+            wp_cache_delete( $user_id, 'user_meta' );
         }
+        
+        // Update stored IDs
+        if ( ! empty( $remaining_ids ) ) {
+            set_transient( 'ucp_user_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
+        } else {
+            delete_transient( 'ucp_user_ids_to_delete' );
+        }
+        
         wp_send_json_success( array(
             'deleted' => $deleted_count,
-            'remaining_ids' => $remaining,
+            'remaining' => count( $remaining_ids ),
             'log' => $log,
+            'complete' => empty( $remaining_ids )
         ) );
+    }
+
+    public function cleanup_transients() {
+        delete_transient( 'ucp_scan_state' );
+        delete_transient( 'ucp_user_ids_to_delete' );
     }
 
 }
