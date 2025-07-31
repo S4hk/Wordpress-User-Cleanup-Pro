@@ -36,7 +36,8 @@ class WBCP_Plugin {
     }
 
     public function cleanup_transients() {
-        WBCP_Utils::cleanup_transients();
+        if ( class_exists( 'WBCP_Utils' ) ) {
+            WBCP_Utils::cleanup_transients();
+        }
     }
-}
 }

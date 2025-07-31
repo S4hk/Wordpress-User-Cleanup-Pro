@@ -47,12 +47,19 @@ class WBCP_Utils {
     }
     
     public static function cleanup_transients() {
-        delete_transient( 'wbcp_scan_state' );
-        delete_transient( 'wbcp_user_ids_to_delete' );
-        delete_transient( 'wbcp_wc_order_ids_to_delete' );
-        delete_transient( 'wbcp_wc_coupon_ids_to_delete' );
+        global $wpdb;
+        
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+            '_transient_wbcp_%'
+        ) );
+        
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+            '_transient_timeout_wbcp_%'
+        ) );
     }
-    
+
     public static function set_execution_time_limit( $seconds = 300 ) {
         if ( ! ini_get( 'safe_mode' ) ) {
             set_time_limit( $seconds );
