@@ -12,86 +12,100 @@ class WBCP_GitHub_Updater {
     private $version;
     private $username;
     private $repository;
+    private $github_repo;
 
     public function __construct( $file, $github_repo, $version ) {
         $this->file = $file;
         $this->plugin_slug = plugin_basename( $file );
         $this->version = $version;
+        $this->github_repo = $github_repo;
         
         // Parse GitHub repo
         $repo_parts = explode( '/', $github_repo );
         $this->username = $repo_parts[0];
         $this->repository = $repo_parts[1];
 
+        // Hook into WordPress update system
         add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'modify_transient' ), 10, 1 );
         add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
         add_filter( 'upgrader_post_install', array( $this, 'after_install' ), 10, 3 );
-    }
-
-    public function check_for_update() {
-        $remote_version = $this->get_remote_version();
-        
-        if ( $remote_version && version_compare( $this->version, $remote_version, '<' ) ) {
-            return array(
-                'new_version' => $remote_version,
-                'package' => $this->get_download_url()
-            );
-        }
-        
-        return false;
-    }
-
-    private function get_remote_version() {
-        $request = wp_remote_get( "https://api.github.com/repos/{$this->username}/{$this->repository}/releases/latest" );
-        
-        if ( ! is_wp_error( $request ) && wp_remote_retrieve_response_code( $request ) === 200 ) {
-            $body = wp_remote_retrieve_body( $request );
-            $data = json_decode( $body, true );
-            
-            if ( isset( $data['tag_name'] ) ) {
-                return ltrim( $data['tag_name'], 'v' );
-            }
-        }
-        
-        return false;
-    }
-
-    private function get_download_url() {
-        return "https://github.com/{$this->username}/{$this->repository}/archive/main.zip";
+        add_filter( 'upgrader_pre_download', array( $this, 'download_package' ), 10, 3 );
     }
 
     public function modify_transient( $transient ) {
-        if ( isset( $transient->checked ) ) {
-            $remote_version = $this->get_remote_version();
-            
-            if ( $remote_version && version_compare( $this->version, $remote_version, '<' ) ) {
-                $transient->response[ $this->plugin_slug ] = (object) array(
-                    'slug' => $this->plugin_slug,
-                    'new_version' => $remote_version,
-                    'package' => $this->get_download_url()
-                );
-            }
+        if ( ! isset( $transient->checked ) || ! isset( $transient->checked[ $this->plugin_slug ] ) ) {
+            return $transient;
+        }
+
+        $update_info = $this->check_for_update();
+        
+        if ( $update_info && version_compare( $this->version, $update_info['new_version'], '<' ) ) {
+            $transient->response[ $this->plugin_slug ] = (object) array(
+                'slug' => dirname( $this->plugin_slug ),
+                'plugin' => $this->plugin_slug,
+                'new_version' => $update_info['new_version'],
+                'url' => $update_info['details_url'],
+                'package' => $update_info['download_url'],
+                'tested' => get_bloginfo( 'version' ),
+                'requires_php' => '7.4',
+                'compatibility' => new stdClass()
+            );
         }
         
         return $transient;
     }
 
     public function plugin_popup( $result, $action, $args ) {
-        return $result;
-    }
+        if ( $action !== 'plugin_information' ) {
+            return $result;
+        }
 
-    public function after_install( $response, $hook_extra, $result ) {
-        return $response;
-    }
-}
+        if ( ! isset( $args->slug ) || $args->slug !== dirname( $this->plugin_slug ) ) {
+            return $result;
+        }
+
+        $update_info = $this->check_for_update();
+        
+        if ( ! $update_info ) {
+            return $result;
+        }
+
+        return (object) array(
+            'name' => 'WordPress Bulk Cleanup Pro',
+            'slug' => dirname( $this->plugin_slug ),
+            'version' => $update_info['new_version'],
+            'author' => 'S4hk',
+            'author_profile' => 'https://github.com/S4hk',
+            'last_updated' => $update_info['last_updated'],
+            'homepage' => "https://github.com/{$this->github_repo}",
+            'download_link' => $update_info['download_url'],
+            'trunk' => $update_info['download_url'],
+            'requires' => '5.6',
+            'tested' => get_bloginfo( 'version' ),
+            'requires_php' => '7.4',
+            'sections' => array(
+                'description' => 'Advanced bulk cleanup tool for administrators. Delete users by missing names, email domains, or roles, and WooCommerce orders/coupons by status.',
+                'changelog' => $this->get_changelog( $update_info['body'] ?? '' )
+            ),
             'banners' => array(),
             'icons' => array()
         );
     }
 
-    /**
-     * Download the update package from GitHub
-     */
+    public function after_install( $response, $hook_extra, $result ) {
+        global $wp_filesystem;
+
+        $install_directory = plugin_dir_path( $this->file );
+        $wp_filesystem->move( $result['destination'], $install_directory );
+        $result['destination'] = $install_directory;
+
+        if ( $this->plugin_slug ) {
+            activate_plugin( $this->plugin_slug );
+        }
+
+        return $result;
+    }
+
     public function download_package( $reply, $package, $upgrader ) {
         if ( strpos( $package, 'github.com' ) === false || strpos( $package, $this->github_repo ) === false ) {
             return $reply;
@@ -106,22 +120,6 @@ class WBCP_GitHub_Updater {
         return $download_file;
     }
 
-    /**
-     * Clean up after update
-     */
-    public function after_update( $upgrader_object, $options ) {
-        if ( $options['action'] === 'update' && $options['type'] === 'plugin' ) {
-            // Clear any cached update information
-            delete_transient( 'wbcp_github_update_check' );
-            
-            // Clear plugin update transients
-            delete_site_transient( 'update_plugins' );
-        }
-    }
-
-    /**
-     * Check GitHub for new version
-     */
     public function check_for_update() {
         // Check cache first
         $cached_update = get_transient( 'wbcp_github_update_check' );
@@ -140,7 +138,6 @@ class WBCP_GitHub_Updater {
         ) );
 
         if ( is_wp_error( $response ) ) {
-            // Cache negative result for 1 hour
             set_transient( 'wbcp_github_update_check', false, HOUR_IN_SECONDS );
             return false;
         }
@@ -149,12 +146,10 @@ class WBCP_GitHub_Updater {
         $data = json_decode( $body, true );
 
         if ( ! isset( $data['tag_name'] ) ) {
-            // Cache negative result for 1 hour
             set_transient( 'wbcp_github_update_check', false, HOUR_IN_SECONDS );
             return false;
         }
 
-        // Clean version number (remove 'v' prefix if present)
         $new_version = ltrim( $data['tag_name'], 'v' );
         
         $update_info = array(
@@ -163,8 +158,8 @@ class WBCP_GitHub_Updater {
             'details_url' => $data['html_url'],
             'body' => isset( $data['body'] ) ? $data['body'] : '',
             'last_updated' => $data['published_at'],
-            'tested' => get_bloginfo( 'version' ), // Assume compatibility with current WP version
-            'requires_php' => '7.4' // Minimum PHP version
+            'tested' => get_bloginfo( 'version' ),
+            'requires_php' => '7.4'
         );
 
         // Cache for 12 hours
@@ -173,21 +168,26 @@ class WBCP_GitHub_Updater {
         return $update_info;
     }
 
-    /**
-     * Parse changelog from release body
-     */
     private function get_changelog( $body ) {
         if ( empty( $body ) ) {
             return 'No changelog available.';
         }
 
-        // Convert markdown to HTML for better display
         $changelog = wpautop( $body );
-        
-        // Convert markdown headers
         $changelog = preg_replace( '/^### (.+)$/m', '<h4>$1</h4>', $changelog );
         $changelog = preg_replace( '/^## (.+)$/m', '<h3>$1</h3>', $changelog );
         $changelog = preg_replace( '/^# (.+)$/m', '<h2>$1</h2>', $changelog );
+        $changelog = preg_replace( '/^\* (.+)$/m', '<li>$1</li>', $changelog );
+        $changelog = preg_replace( '/(<li>.+<\/li>)/s', '<ul>$1</ul>', $changelog );
+        
+        return $changelog;
+    }
+
+    public function force_check() {
+        delete_transient( 'wbcp_github_update_check' );
+        return $this->check_for_update();
+    }
+}
         
         // Convert markdown lists
         $changelog = preg_replace( '/^\* (.+)$/m', '<li>$1</li>', $changelog );

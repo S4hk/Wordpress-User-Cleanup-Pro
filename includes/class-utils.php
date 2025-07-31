@@ -38,6 +38,13 @@ class WBCP_Utils {
     }
 
     /**
+     * Get plugin options (alias for get_settings for backward compatibility)
+     */
+    public static function get_options() {
+        return self::get_settings();
+    }
+
+    /**
      * Cleanup all plugin transients
      */
     public static function cleanup_transients() {
@@ -62,7 +69,5 @@ class WBCP_Utils {
         }
         
         return array_map( 'trim', explode( ',', $domains ) );
-    }
-}
     }
 }
