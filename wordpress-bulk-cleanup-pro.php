@@ -2,7 +2,7 @@
 /*
 Plugin Name: WordPress Bulk Cleanup Pro
 Description: Advanced bulk cleanup tool for administrators. Delete users by missing names, email domains, or roles, and WooCommerce orders by status, in safe batches with progress bar. Supports millions of users/orders with memory-efficient scanning. Never deletes administrators.
-Version: 1.2.1
+Version: 1.2.2
 Author: s4hk
 Author URI: https://github.com/S4hk
 Requires at least: 5.6
