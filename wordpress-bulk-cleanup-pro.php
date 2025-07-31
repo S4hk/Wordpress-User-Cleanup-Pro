@@ -1,45 +1,45 @@
 <?php
 /*
-Plugin Name: User Cleanup Pro
-Description: Advanced user cleanup tool for administrators. Delete users by missing names, email domains, or roles, and WooCommerce orders by status, in safe batches with progress bar. Supports millions of users/orders with memory-efficient scanning. Never deletes administrators.
+Plugin Name: WordPress Bulk Cleanup Pro
+Description: Advanced bulk cleanup tool for administrators. Delete users by missing names, email domains, or roles, and WooCommerce orders by status, in safe batches with progress bar. Supports millions of users/orders with memory-efficient scanning. Never deletes administrators.
 Version: 1.2.0
 Author: OpenAI GPT-4
 Requires at least: 5.6
 License: GPL2+
-GitHub Plugin URI: yourusername/user-cleanup-pro
+GitHub Plugin URI: S4hk/wordpress-bulk-cleanup-pro
 GitHub Branch: main
 */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Define plugin constants
-define( 'UCP_VERSION', '1.2.0' );
-define( 'UCP_PLUGIN_FILE', __FILE__ );
-define( 'UCP_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
-define( 'UCP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'UCP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'UCP_GITHUB_REPO', 'yourusername/user-cleanup-pro' ); // Change this to your GitHub repo
+define( 'WBCP_VERSION', '1.2.0' );
+define( 'WBCP_PLUGIN_FILE', __FILE__ );
+define( 'WBCP_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+define( 'WBCP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'WBCP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'WBCP_GITHUB_REPO', 'S4hk/wordpress-bulk-cleanup-pro' );
 
 // Include the updater class
-require_once UCP_PLUGIN_DIR . 'includes/class-github-updater.php';
+require_once WBCP_PLUGIN_DIR . 'includes/class-github-updater.php';
 
-if ( ! class_exists( 'UCP_User_Cleanup_Pro' ) ) :
+if ( ! class_exists( 'WBCP_WordPress_Bulk_Cleanup_Pro' ) ) :
 
-class UCP_User_Cleanup_Pro {
+class WBCP_WordPress_Bulk_Cleanup_Pro {
 
-    const OPTION_KEY = 'ucp_settings';
+    const OPTION_KEY = 'wbcp_settings';
 
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
-        add_action( 'wp_ajax_ucp_start_deletion', array( $this, 'ajax_start_deletion' ) );
-        add_action( 'wp_ajax_ucp_scan_batch', array( $this, 'ajax_scan_batch' ) );
-        add_action( 'wp_ajax_ucp_run_batch', array( $this, 'ajax_run_batch' ) );
+        add_action( 'wp_ajax_wbcp_start_deletion', array( $this, 'ajax_start_deletion' ) );
+        add_action( 'wp_ajax_wbcp_scan_batch', array( $this, 'ajax_scan_batch' ) );
+        add_action( 'wp_ajax_wbcp_run_batch', array( $this, 'ajax_run_batch' ) );
         
         // Initialize GitHub updater
         if ( is_admin() ) {
-            new UCP_GitHub_Updater( UCP_PLUGIN_FILE, UCP_GITHUB_REPO, UCP_VERSION );
+            new WBCP_GitHub_Updater( WBCP_PLUGIN_FILE, WBCP_GITHUB_REPO, WBCP_VERSION );
         }
         
         // Cleanup transients on plugin deactivation
@@ -48,16 +48,16 @@ class UCP_User_Cleanup_Pro {
 
     public function add_settings_page() {
         add_users_page(
-            __( 'User Cleanup Pro', 'user-cleanup-pro' ),
-            __( 'User Cleanup Pro', 'user-cleanup-pro' ),
+            __( 'WordPress Bulk Cleanup Pro', 'wordpress-bulk-cleanup-pro' ),
+            __( 'Bulk Cleanup Pro', 'wordpress-bulk-cleanup-pro' ),
             'manage_options',
-            'user-cleanup-pro',
+            'wordpress-bulk-cleanup-pro',
             array( $this, 'render_settings_page' )
         );
     }
 
     public function register_settings() {
-        register_setting( 'ucp_settings_group', self::OPTION_KEY, array( $this, 'sanitize_settings' ) );
+        register_setting( 'wbcp_settings_group', self::OPTION_KEY, array( $this, 'sanitize_settings' ) );
     }
 
     public function sanitize_settings( $input ) {
@@ -109,81 +109,81 @@ class UCP_User_Cleanup_Pro {
         $batch_size              = isset( $options['batch_size'] ) ? intval( $options['batch_size'] ) : 100;
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e( 'User Cleanup Pro', 'user-cleanup-pro' ); ?> <span style="font-size:14px; color:#666;">v<?php echo UCP_VERSION; ?></span></h1>
+            <h1><?php esc_html_e( 'WordPress Bulk Cleanup Pro', 'wordpress-bulk-cleanup-pro' ); ?> <span style="font-size:14px; color:#666;">v<?php echo WBCP_VERSION; ?></span></h1>
             
             <?php
             // Show update notice if available
-            $github_updater = new UCP_GitHub_Updater( UCP_PLUGIN_FILE, UCP_GITHUB_REPO, UCP_VERSION );
+            $github_updater = new WBCP_GitHub_Updater( WBCP_PLUGIN_FILE, WBCP_GITHUB_REPO, WBCP_VERSION );
             $update_info = $github_updater->check_for_update();
-            if ( $update_info && version_compare( UCP_VERSION, $update_info['new_version'], '<' ) ) :
+            if ( $update_info && version_compare( WBCP_VERSION, $update_info['new_version'], '<' ) ) :
             ?>
             <div class="notice notice-info">
-                <p><strong><?php esc_html_e( 'Update Available!', 'user-cleanup-pro' ); ?></strong> 
+                <p><strong><?php esc_html_e( 'Update Available!', 'wordpress-bulk-cleanup-pro' ); ?></strong> 
                 <?php printf( 
-                    esc_html__( 'Version %s is available. Current version: %s', 'user-cleanup-pro' ), 
+                    esc_html__( 'Version %s is available. Current version: %s', 'wordpress-bulk-cleanup-pro' ), 
                     $update_info['new_version'], 
-                    UCP_VERSION 
+                    WBCP_VERSION 
                 ); ?>
                 <a href="<?php echo admin_url( 'plugins.php' ); ?>" class="button button-primary" style="margin-left:10px;">
-                    <?php esc_html_e( 'Update Now', 'user-cleanup-pro' ); ?>
+                    <?php esc_html_e( 'Update Now', 'wordpress-bulk-cleanup-pro' ); ?>
                 </a>
                 </p>
             </div>
             <?php endif; ?>
             
-            <form method="post" action="options.php" id="ucp-settings-form">
+            <form method="post" action="options.php" id="wbcp-settings-form">
                 <?php
-                settings_fields( 'ucp_settings_group' );
+                settings_fields( 'wbcp_settings_group' );
                 ?>
                 <table class="form-table">
                     <tr>
-                        <th><?php esc_html_e( 'Delete users without first & last name', 'user-cleanup-pro' ); ?></th>
+                        <th><?php esc_html_e( 'Delete users without first & last name', 'wordpress-bulk-cleanup-pro' ); ?></th>
                         <td>
                             <input type="checkbox" name="<?php echo self::OPTION_KEY; ?>[delete_no_name]" value="1" <?php checked( $delete_no_name, 1 ); ?> />
-                            <span><?php esc_html_e( 'Users missing both first and last name will be deleted.', 'user-cleanup-pro' ); ?></span>
+                            <span><?php esc_html_e( 'Users missing both first and last name will be deleted.', 'wordpress-bulk-cleanup-pro' ); ?></span>
                         </td>
                     </tr>
                     <tr>
-                        <th><?php esc_html_e( 'Delete users with email domains NOT matching', 'user-cleanup-pro' ); ?></th>
+                        <th><?php esc_html_e( 'Delete users with email domains NOT matching', 'wordpress-bulk-cleanup-pro' ); ?></th>
                         <td>
                             <input type="checkbox" name="<?php echo self::OPTION_KEY; ?>[delete_unlisted_domains]" value="1" <?php checked( $delete_unlisted_domains, 1 ); ?> />
                             <input type="text" name="<?php echo self::OPTION_KEY; ?>[allowed_domains]" value="<?php echo $allowed_domains; ?>" style="width:350px;" placeholder="e.g. mycompany.com,partner.org" />
                         </td>
                     </tr>
                     <tr>
-                        <th><?php esc_html_e( 'Delete all users of a specific role', 'user-cleanup-pro' ); ?></th>
+                        <th><?php esc_html_e( 'Delete all users of a specific role', 'wordpress-bulk-cleanup-pro' ); ?></th>
                         <td>
                             <?php $this->role_dropdown( $delete_role ); ?>
                         </td>
                     </tr>
                     <?php if ( class_exists( 'WooCommerce' ) ) : ?>
                     <tr>
-                        <th><?php esc_html_e( 'Delete WooCommerce orders', 'user-cleanup-pro' ); ?></th>
+                        <th><?php esc_html_e( 'Delete WooCommerce orders', 'wordpress-bulk-cleanup-pro' ); ?></th>
                         <td>
                             <input type="checkbox" name="<?php echo self::OPTION_KEY; ?>[delete_wc_orders]" value="1" <?php checked( $delete_wc_orders, 1 ); ?> id="delete_wc_orders" />
-                            <label for="delete_wc_orders"><?php esc_html_e( 'Delete WooCommerce orders with all related data', 'user-cleanup-pro' ); ?></label>
+                            <label for="delete_wc_orders"><?php esc_html_e( 'Delete WooCommerce orders with all related data', 'wordpress-bulk-cleanup-pro' ); ?></label>
                             <div id="wc_order_statuses_wrapper" style="margin-top:10px; <?php echo $delete_wc_orders ? '' : 'display:none;'; ?>">
-                                <label><?php esc_html_e( 'Order statuses to delete:', 'user-cleanup-pro' ); ?></label><br>
+                                <label><?php esc_html_e( 'Order statuses to delete:', 'wordpress-bulk-cleanup-pro' ); ?></label><br>
                                 <?php $this->wc_order_status_checkboxes( $wc_order_statuses ); ?>
-                                <p class="description"><?php esc_html_e( 'Select which order statuses to delete. This will remove orders, order items, order meta, and all related data.', 'user-cleanup-pro' ); ?></p>
+                                <p class="description"><?php esc_html_e( 'Select which order statuses to delete. This will remove orders, order items, order meta, and all related data.', 'wordpress-bulk-cleanup-pro' ); ?></p>
                             </div>
                         </td>
                     </tr>
                     <tr>
-                        <th><?php esc_html_e( 'Delete WooCommerce coupons', 'user-cleanup-pro' ); ?></th>
+                        <th><?php esc_html_e( 'Delete WooCommerce coupons', 'wordpress-bulk-cleanup-pro' ); ?></th>
                         <td>
                             <input type="checkbox" name="<?php echo self::OPTION_KEY; ?>[delete_wc_coupons]" value="1" <?php checked( $delete_wc_coupons, 1 ); ?> id="delete_wc_coupons" />
-                            <label for="delete_wc_coupons"><?php esc_html_e( 'Delete WooCommerce coupons with all related data', 'user-cleanup-pro' ); ?></label>
+                            <label for="delete_wc_coupons"><?php esc_html_e( 'Delete WooCommerce coupons with all related data', 'wordpress-bulk-cleanup-pro' ); ?></label>
                             <div id="wc_coupon_statuses_wrapper" style="margin-top:10px; <?php echo $delete_wc_coupons ? '' : 'display:none;'; ?>">
-                                <label><?php esc_html_e( 'Coupon statuses to delete:', 'user-cleanup-pro' ); ?></label><br>
+                                <label><?php esc_html_e( 'Coupon statuses to delete:', 'wordpress-bulk-cleanup-pro' ); ?></label><br>
                                 <?php $this->wc_coupon_status_checkboxes( $wc_coupon_statuses ); ?>
-                                <p class="description"><?php esc_html_e( 'Select which coupon statuses to delete. This will remove coupons, coupon meta, and all related data.', 'user-cleanup-pro' ); ?></p>
+                                <p class="description"><?php esc_html_e( 'Select which coupon statuses to delete. This will remove coupons, coupon meta, and all related data.', 'wordpress-bulk-cleanup-pro' ); ?></p>
                             </div>
                         </td>
                     </tr>
                     <?php endif; ?>
                     <tr>
-                        <th><?php esc_html_e( 'Batch size for deletion', 'user-cleanup-pro' ); ?></th>
+                        <th><?php esc_html_e( 'Batch size for deletion', 'wordpress-bulk-cleanup-pro' ); ?></th>
                         <td>
                             <select name="<?php echo self::OPTION_KEY; ?>[batch_size]">
                                 <option value="50" <?php selected( $batch_size, 50 ); ?>>50 (Slower, safest)</option>
@@ -192,25 +192,25 @@ class UCP_User_Cleanup_Pro {
                                 <option value="500" <?php selected( $batch_size, 500 ); ?>>500 (Fast)</option>
                                 <option value="1000" <?php selected( $batch_size, 1000 ); ?>>1000 (Very fast, advanced)</option>
                             </select>
-                            <p class="description"><?php esc_html_e( 'Number of users to delete per batch. Higher numbers are faster but use more server resources.', 'user-cleanup-pro' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Number of users to delete per batch. Higher numbers are faster but use more server resources.', 'wordpress-bulk-cleanup-pro' ); ?></p>
                         </td>
                     </tr>
                 </table>
                 <?php submit_button(); ?>
             </form>
             <hr>
-            <h2><?php esc_html_e( 'Start User Cleanup', 'user-cleanup-pro' ); ?></h2>
+            <h2><?php esc_html_e( 'Start Bulk Cleanup', 'wordpress-bulk-cleanup-pro' ); ?></h2>
             <div class="notice notice-warning inline">
-                <p><strong><?php esc_html_e( 'Warning:', 'user-cleanup-pro' ); ?></strong> <?php esc_html_e( 'This action cannot be undone. Please backup your database before proceeding. The process will scan all users and orders first, then delete them in batches.', 'user-cleanup-pro' ); ?></p>
+                <p><strong><?php esc_html_e( 'Warning:', 'wordpress-bulk-cleanup-pro' ); ?></strong> <?php esc_html_e( 'This action cannot be undone. Please backup your database before proceeding. The process will scan all users and orders first, then delete them in batches.', 'wordpress-bulk-cleanup-pro' ); ?></p>
             </div>
-            <button id="ucp-start-deletion" class="button button-primary"><?php esc_html_e( 'Start Deletion Process', 'user-cleanup-pro' ); ?></button>
-            <div id="ucp-progress-wrapper" style="display:none; margin-top:10px;">
-                <div id="ucp-progress-bar" style="background:#e0e0e0; border-radius:5px; height:25px; width:400px; margin-bottom:10px;">
-                    <div id="ucp-progress-inner" style="background:#0073aa; height:100%; width:0%; border-radius:5px;"></div>
+            <button id="wbcp-start-deletion" class="button button-primary"><?php esc_html_e( 'Start Deletion Process', 'wordpress-bulk-cleanup-pro' ); ?></button>
+            <div id="wbcp-progress-wrapper" style="display:none; margin-top:10px;">
+                <div id="wbcp-progress-bar" style="background:#e0e0e0; border-radius:5px; height:25px; width:400px; margin-bottom:10px;">
+                    <div id="wbcp-progress-inner" style="background:#0073aa; height:100%; width:0%; border-radius:5px;"></div>
                 </div>
-                <span id="ucp-progress-label"></span>
+                <span id="wbcp-progress-label"></span>
             </div>
-            <div id="ucp-log" style="margin-top:15px; max-height:120px; overflow-y:auto; color:#23282d; font-size:14px;"></div>
+            <div id="wbcp-log" style="margin-top:15px; max-height:120px; overflow-y:auto; color:#23282d; font-size:14px;"></div>
         </div>
         <script>
         jQuery(document).ready(function($) {
@@ -236,20 +236,20 @@ class UCP_User_Cleanup_Pro {
             
             function updateProgress() {
                 var percent = total > 0 ? Math.round( deleted / total * 100 ) : 0;
-                $('#ucp-progress-inner').css('width', percent + '%');
+                $('#wbcp-progress-inner').css('width', percent + '%');
                 if ( isScanning ) {
-                    $('#ucp-progress-label').text('Scanning users and orders...');
+                    $('#wbcp-progress-label').text('Scanning users and orders...');
                 } else {
-                    $('#ucp-progress-label').text(deleted + ' deleted / ' + total + ' total (' + percent + '%)');
+                    $('#wbcp-progress-label').text(deleted + ' deleted / ' + total + ' total (' + percent + '%)');
                 }
             }
             
             function logMessage(msg) {
-                $('#ucp-log').append($('<div/>').text(msg));
-                $('#ucp-log').scrollTop(99999);
+                $('#wbcp-log').append($('<div/>').text(msg));
+                $('#wbcp-log').scrollTop(99999);
             }
             
-            $('#ucp-start-deletion').on('click', function(e){
+            $('#wbcp-start-deletion').on('click', function(e){
                 e.preventDefault();
                 if ( isRunning ) return;
                 
@@ -258,21 +258,21 @@ class UCP_User_Cleanup_Pro {
                 deleted = 0;
                 total = 0;
                 
-                $('#ucp-log').empty();
-                $('#ucp-progress-label').text('Starting scan...');
-                $('#ucp-progress-inner').css('width','0%');
-                $('#ucp-progress-wrapper').show();
+                $('#wbcp-log').empty();
+                $('#wbcp-progress-label').text('Starting scan...');
+                $('#wbcp-progress-inner').css('width','0%');
+                $('#wbcp-progress-wrapper').show();
                 $(this).prop('disabled', true);
                 
                 $.post(
                     ajaxurl,
-                    { action:'ucp_start_deletion', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>' },
+                    { action:'wbcp_start_deletion', _ajax_nonce:'<?php echo wp_create_nonce( 'wbcp_ajax_nonce' ); ?>' },
                     function(resp) {
                         if ( ! resp.success ) {
                             logMessage('Failed: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
                             isRunning = false;
                             isScanning = false;
-                            $('#ucp-start-deletion').prop('disabled', false);
+                            $('#wbcp-start-deletion').prop('disabled', false);
                             return;
                         }
                         
@@ -286,7 +286,7 @@ class UCP_User_Cleanup_Pro {
                     logMessage('Network error occurred.');
                     isRunning = false;
                     isScanning = false;
-                    $('#ucp-start-deletion').prop('disabled', false);
+                    $('#wbcp-start-deletion').prop('disabled', false);
                 });
             });
             
@@ -295,13 +295,13 @@ class UCP_User_Cleanup_Pro {
                 
                 $.post(
                     ajaxurl,
-                    { action:'ucp_scan_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>' },
+                    { action:'wbcp_scan_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'wbcp_ajax_nonce' ); ?>' },
                     function(resp) {
                         if ( ! resp.success ) {
                             logMessage('Scan error: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
                             isRunning = false;
                             isScanning = false;
-                            $('#ucp-start-deletion').prop('disabled', false);
+                            $('#wbcp-start-deletion').prop('disabled', false);
                             return;
                         }
                         
@@ -314,9 +314,9 @@ class UCP_User_Cleanup_Pro {
                             logMessage(resp.data.message || 'Scan completed.');
                             
                             if ( total === 0 ) {
-                                $('#ucp-progress-label').text('No users to delete.');
+                                $('#wbcp-progress-label').text('No users to delete.');
                                 isRunning = false;
-                                $('#ucp-start-deletion').prop('disabled', false);
+                                $('#wbcp-start-deletion').prop('disabled', false);
                             } else {
                                 updateProgress();
                                 logMessage('Starting deletion process...');
@@ -325,9 +325,9 @@ class UCP_User_Cleanup_Pro {
                         } else {
                             // Continue scanning
                             if ( resp.data.message ) {
-                                var lastMessage = $('#ucp-log div:last').text();
+                                var lastMessage = $('#wbcp-log div:last').text();
                                 if ( lastMessage.indexOf('Scanned') === 0 ) {
-                                    $('#ucp-log div:last').text(resp.data.message);
+                                    $('#wbcp-log div:last').text(resp.data.message);
                                 } else {
                                     logMessage(resp.data.message);
                                 }
@@ -339,7 +339,7 @@ class UCP_User_Cleanup_Pro {
                     logMessage('Network error during scan.');
                     isRunning = false;
                     isScanning = false;
-                    $('#ucp-start-deletion').prop('disabled', false);
+                    $('#wbcp-start-deletion').prop('disabled', false);
                 });
             }
             
@@ -348,12 +348,12 @@ class UCP_User_Cleanup_Pro {
                 
                 $.post(
                     ajaxurl,
-                    { action:'ucp_run_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'ucp_ajax_nonce' ); ?>', batch_size: batchSize },
+                    { action:'wbcp_run_batch', _ajax_nonce:'<?php echo wp_create_nonce( 'wbcp_ajax_nonce' ); ?>', batch_size: batchSize },
                     function(resp) {
                         if ( ! resp.success ) {
                             logMessage('Deletion error: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error') );
                             isRunning = false;
-                            $('#ucp-start-deletion').prop('disabled', false);
+                            $('#wbcp-start-deletion').prop('disabled', false);
                             return;
                         }
                         
@@ -369,10 +369,10 @@ class UCP_User_Cleanup_Pro {
                         updateProgress();
                         
                         if ( resp.data.complete ) {
-                            $('#ucp-progress-label').text('Completed: ' + deleted + ' users deleted.');
+                            $('#wbcp-progress-label').text('Completed: ' + deleted + ' users deleted.');
                             logMessage('Deletion process completed.');
                             isRunning = false;
-                            $('#ucp-start-deletion').prop('disabled', false);
+                            $('#wbcp-start-deletion').prop('disabled', false);
                         } else {
                             setTimeout(runDeletion, 500); // Half-second delay between deletion batches
                         }
@@ -380,15 +380,15 @@ class UCP_User_Cleanup_Pro {
                 ).fail(function() {
                     logMessage('Network error during deletion.');
                     isRunning = false;
-                    $('#ucp-start-deletion').prop('disabled', false);
+                    $('#wbcp-start-deletion').prop('disabled', false);
                 });
             }
         });
         </script>
         <style>
-        #ucp-progress-bar { max-width:400px; margin-top:5px; }
-        #ucp-progress-inner { transition: width 0.3s; }
-        #ucp-log { background:#f6f6f6; border:1px solid #e0e0e0; border-radius:4px; padding:8px; }
+        #wbcp-progress-bar { max-width:400px; margin-top:5px; }
+        #wbcp-progress-inner { transition: width 0.3s; }
+        #wbcp-log { background:#f6f6f6; border:1px solid #e0e0e0; border-radius:4px; padding:8px; }
         </style>
         <?php
     }
@@ -397,7 +397,7 @@ class UCP_User_Cleanup_Pro {
         global $wp_roles;
         $roles = $wp_roles->roles;
         echo '<select name="' . self::OPTION_KEY . '[delete_role]">';
-        echo '<option value="">' . esc_html__( '— Select Role —', 'user-cleanup-pro' ) . '</option>';
+        echo '<option value="">' . esc_html__( '— Select Role —', 'wordpress-bulk-cleanup-pro' ) . '</option>';
         foreach ( $roles as $role_key => $role ) {
             if ( $role_key === 'administrator' ) continue;
             echo '<option value="' . esc_attr( $role_key ) . '"' . selected( $selected, $role_key, false ) . '>' . esc_html( $role['name'] ) . '</option>';
@@ -423,11 +423,11 @@ class UCP_User_Cleanup_Pro {
         if ( ! class_exists( 'WooCommerce' ) ) return;
         
         $coupon_statuses = array(
-            'publish' => __( 'Published (Active)', 'user-cleanup-pro' ),
-            'draft' => __( 'Draft', 'user-cleanup-pro' ),
-            'pending' => __( 'Pending Review', 'user-cleanup-pro' ),
-            'private' => __( 'Private', 'user-cleanup-pro' ),
-            'trash' => __( 'Trash', 'user-cleanup-pro' )
+            'publish' => __( 'Published (Active)', 'wordpress-bulk-cleanup-pro' ),
+            'draft' => __( 'Draft', 'wordpress-bulk-cleanup-pro' ),
+            'pending' => __( 'Pending Review', 'wordpress-bulk-cleanup-pro' ),
+            'private' => __( 'Private', 'wordpress-bulk-cleanup-pro' ),
+            'trash' => __( 'Trash', 'wordpress-bulk-cleanup-pro' )
         );
         
         foreach ( $coupon_statuses as $status_key => $status_name ) {
@@ -440,7 +440,7 @@ class UCP_User_Cleanup_Pro {
     }
 
     public function ajax_start_deletion() {
-        check_ajax_referer( 'ucp_ajax_nonce' );
+        check_ajax_referer( 'wbcp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
         
         // Set longer execution time for large operations
@@ -463,10 +463,10 @@ class UCP_User_Cleanup_Pro {
         $allowed_domains = array_filter( array_map( 'trim', $allowed_domains ) );
 
         // Start scanning process - store scanning state in transient
-        delete_transient( 'ucp_scan_state' );
-        delete_transient( 'ucp_user_ids_to_delete' );
-        delete_transient( 'ucp_wc_order_ids_to_delete' );
-        delete_transient( 'ucp_wc_coupon_ids_to_delete' );
+        delete_transient( 'wbcp_scan_state' );
+        delete_transient( 'wbcp_user_ids_to_delete' );
+        delete_transient( 'wbcp_wc_order_ids_to_delete' );
+        delete_transient( 'wbcp_wc_coupon_ids_to_delete' );
         
         $scan_state = array(
             'offset' => 0,
@@ -491,7 +491,7 @@ class UCP_User_Cleanup_Pro {
             )
         );
         
-        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        set_transient( 'wbcp_scan_state', $scan_state, HOUR_IN_SECONDS );
         
         wp_send_json_success( array(
             'scanning' => true,
@@ -501,7 +501,7 @@ class UCP_User_Cleanup_Pro {
     }
 
     public function ajax_scan_batch() {
-        check_ajax_referer( 'ucp_ajax_nonce' );
+        check_ajax_referer( 'wbcp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
         
         // Set longer execution time
@@ -509,7 +509,7 @@ class UCP_User_Cleanup_Pro {
             set_time_limit( 60 ); // 1 minute per scan batch
         }
         
-        $scan_state = get_transient( 'ucp_scan_state' );
+        $scan_state = get_transient( 'wbcp_scan_state' );
         if ( ! $scan_state ) {
             wp_send_json_error( array( 'message' => 'Scan state lost. Please restart.' ) );
         }
@@ -542,15 +542,15 @@ class UCP_User_Cleanup_Pro {
             }
             
             // All scanning complete
-            $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
-            $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
-            $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+            $existing_user_ids = get_transient( 'wbcp_user_ids_to_delete' );
+            $existing_order_ids = get_transient( 'wbcp_wc_order_ids_to_delete' );
+            $existing_coupon_ids = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
             $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
             $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
             $total_coupons = is_array( $existing_coupon_ids ) ? count( $existing_coupon_ids ) : 0;
             $total_to_delete = $total_users + $total_orders + $total_coupons;
             
-            delete_transient( 'ucp_scan_state' );
+            delete_transient( 'wbcp_scan_state' );
             
             $message_parts = array();
             if ( $total_users > 0 ) $message_parts[] = "{$total_users} users";
@@ -620,19 +620,19 @@ class UCP_User_Cleanup_Pro {
         
         // Store found IDs
         if ( ! empty( $current_batch_ids ) ) {
-            $existing_ids = get_transient( 'ucp_user_ids_to_delete' );
+            $existing_ids = get_transient( 'wbcp_user_ids_to_delete' );
             if ( ! is_array( $existing_ids ) ) {
                 $existing_ids = array();
             }
             $existing_ids = array_merge( $existing_ids, $current_batch_ids );
-            set_transient( 'ucp_user_ids_to_delete', $existing_ids, HOUR_IN_SECONDS );
+            set_transient( 'wbcp_user_ids_to_delete', $existing_ids, HOUR_IN_SECONDS );
         }
         
         // Update scan state
         $scan_state['offset'] += $scan_batch_size;
         $scan_state['total_scanned'] += count( $users );
         $scan_state['total_to_delete'] += count( $current_batch_ids );
-        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        set_transient( 'wbcp_scan_state', $scan_state, HOUR_IN_SECONDS );
         
         wp_send_json_success( array(
             'scan_complete' => false,
@@ -668,15 +668,15 @@ class UCP_User_Cleanup_Pro {
             }
             
             // All scanning complete
-            $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
-            $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
-            $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+            $existing_user_ids = get_transient( 'wbcp_user_ids_to_delete' );
+            $existing_order_ids = get_transient( 'wbcp_wc_order_ids_to_delete' );
+            $existing_coupon_ids = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
             $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
             $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
             $total_coupons = is_array( $existing_coupon_ids ) ? count( $existing_coupon_ids ) : 0;
             $total_to_delete = $total_users + $total_orders + $total_coupons;
             
-            delete_transient( 'ucp_scan_state' );
+            delete_transient( 'wbcp_scan_state' );
             
             $message_parts = array();
             if ( $total_users > 0 ) $message_parts[] = "{$total_users} users";
@@ -698,18 +698,18 @@ class UCP_User_Cleanup_Pro {
         }
         
         // Store found order IDs
-        $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+        $existing_order_ids = get_transient( 'wbcp_wc_order_ids_to_delete' );
         if ( ! is_array( $existing_order_ids ) ) {
             $existing_order_ids = array();
         }
         $existing_order_ids = array_merge( $existing_order_ids, $order_ids );
-        set_transient( 'ucp_wc_order_ids_to_delete', $existing_order_ids, HOUR_IN_SECONDS );
+        set_transient( 'wbcp_wc_order_ids_to_delete', $existing_order_ids, HOUR_IN_SECONDS );
         
         // Update scan state
         $scan_state['wc_offset'] += $scan_batch_size;
         $scan_state['wc_total_scanned'] += count( $order_ids );
         $scan_state['wc_total_to_delete'] += count( $order_ids );
-        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        set_transient( 'wbcp_scan_state', $scan_state, HOUR_IN_SECONDS );
         
         $total_scanned = $scan_state['total_scanned'] + $scan_state['wc_total_scanned'];
         $total_found = $scan_state['total_to_delete'] + $scan_state['wc_total_to_delete'];
@@ -745,15 +745,15 @@ class UCP_User_Cleanup_Pro {
         
         if ( empty( $coupon_ids ) ) {
             // WooCommerce coupons scanning complete
-            $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
-            $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
-            $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+            $existing_user_ids = get_transient( 'wbcp_user_ids_to_delete' );
+            $existing_order_ids = get_transient( 'wbcp_wc_order_ids_to_delete' );
+            $existing_coupon_ids = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
             $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
             $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
             $total_coupons = is_array( $existing_coupon_ids ) ? count( $existing_coupon_ids ) : 0;
             $total_to_delete = $total_users + $total_orders + $total_coupons;
             
-            delete_transient( 'ucp_scan_state' );
+            delete_transient( 'wbcp_scan_state' );
             
             $message_parts = array();
             if ( $total_users > 0 ) $message_parts[] = "{$total_users} users";
@@ -775,18 +775,18 @@ class UCP_User_Cleanup_Pro {
         }
         
         // Store found coupon IDs
-        $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        $existing_coupon_ids = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
         if ( ! is_array( $existing_coupon_ids ) ) {
             $existing_coupon_ids = array();
         }
         $existing_coupon_ids = array_merge( $existing_coupon_ids, $coupon_ids );
-        set_transient( 'ucp_wc_coupon_ids_to_delete', $existing_coupon_ids, HOUR_IN_SECONDS );
+        set_transient( 'wbcp_wc_coupon_ids_to_delete', $existing_coupon_ids, HOUR_IN_SECONDS );
         
         // Update scan state
         $scan_state['wc_coupon_offset'] += $scan_batch_size;
         $scan_state['wc_coupon_total_scanned'] += count( $coupon_ids );
         $scan_state['wc_coupon_total_to_delete'] += count( $coupon_ids );
-        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        set_transient( 'wbcp_scan_state', $scan_state, HOUR_IN_SECONDS );
         
         $total_scanned = $scan_state['total_scanned'] + $scan_state['wc_total_scanned'] + $scan_state['wc_coupon_total_scanned'];
         $total_found = $scan_state['total_to_delete'] + $scan_state['wc_total_to_delete'] + $scan_state['wc_coupon_total_to_delete'];
@@ -801,7 +801,7 @@ class UCP_User_Cleanup_Pro {
     }
 
     public function ajax_run_batch() {
-        check_ajax_referer( 'ucp_ajax_nonce' );
+        check_ajax_referer( 'wbcp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
         
         // Set execution time limit
@@ -812,9 +812,9 @@ class UCP_User_Cleanup_Pro {
         $batch_size = isset( $_POST['batch_size'] ) ? intval( $_POST['batch_size'] ) : 100;
         
         // Get IDs from transient storage - prioritize users first, then orders, then coupons
-        $all_user_ids = get_transient( 'ucp_user_ids_to_delete' );
-        $all_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
-        $all_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        $all_user_ids = get_transient( 'wbcp_user_ids_to_delete' );
+        $all_order_ids = get_transient( 'wbcp_wc_order_ids_to_delete' );
+        $all_coupon_ids = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
         
         if ( is_array( $all_user_ids ) && ! empty( $all_user_ids ) ) {
             // Process users first
@@ -883,14 +883,14 @@ class UCP_User_Cleanup_Pro {
         
         // Update stored IDs
         if ( ! empty( $remaining_ids ) ) {
-            set_transient( 'ucp_user_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
+            set_transient( 'wbcp_user_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
         } else {
-            delete_transient( 'ucp_user_ids_to_delete' );
+            delete_transient( 'wbcp_user_ids_to_delete' );
         }
         
         // Check if there are orders or coupons to delete after users are done
-        $remaining_orders = get_transient( 'ucp_wc_order_ids_to_delete' );
-        $remaining_coupons = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        $remaining_orders = get_transient( 'wbcp_wc_order_ids_to_delete' );
+        $remaining_coupons = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
         $total_remaining = count( $remaining_ids ) + 
                           ( is_array( $remaining_orders ) ? count( $remaining_orders ) : 0 ) +
                           ( is_array( $remaining_coupons ) ? count( $remaining_coupons ) : 0 );
@@ -942,13 +942,13 @@ class UCP_User_Cleanup_Pro {
         
         // Update stored IDs
         if ( ! empty( $remaining_ids ) ) {
-            set_transient( 'ucp_wc_order_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
+            set_transient( 'wbcp_wc_order_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
         } else {
-            delete_transient( 'ucp_wc_order_ids_to_delete' );
+            delete_transient( 'wbcp_wc_order_ids_to_delete' );
         }
         
         // Check if there are coupons to delete after orders are done
-        $remaining_coupons = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        $remaining_coupons = get_transient( 'wbcp_wc_coupon_ids_to_delete' );
         $total_remaining = count( $remaining_ids ) + ( is_array( $remaining_coupons ) ? count( $remaining_coupons ) : 0 );
         
         wp_send_json_success( array(
@@ -1001,9 +1001,9 @@ class UCP_User_Cleanup_Pro {
         
         // Update stored IDs
         if ( ! empty( $remaining_ids ) ) {
-            set_transient( 'ucp_wc_coupon_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
+            set_transient( 'wbcp_wc_coupon_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
         } else {
-            delete_transient( 'ucp_wc_coupon_ids_to_delete' );
+            delete_transient( 'wbcp_wc_coupon_ids_to_delete' );
         }
         
         wp_send_json_success( array(
@@ -1015,13 +1015,13 @@ class UCP_User_Cleanup_Pro {
     }
 
     public function cleanup_transients() {
-        delete_transient( 'ucp_scan_state' );
-        delete_transient( 'ucp_user_ids_to_delete' );
-        delete_transient( 'ucp_wc_order_ids_to_delete' );
-        delete_transient( 'ucp_wc_coupon_ids_to_delete' );
+        delete_transient( 'wbcp_scan_state' );
+        delete_transient( 'wbcp_user_ids_to_delete' );
+        delete_transient( 'wbcp_wc_order_ids_to_delete' );
+        delete_transient( 'wbcp_wc_coupon_ids_to_delete' );
     }
 
 }
 endif;
 
-new UCP_User_Cleanup_Pro();
+new WBCP_WordPress_Bulk_Cleanup_Pro();
