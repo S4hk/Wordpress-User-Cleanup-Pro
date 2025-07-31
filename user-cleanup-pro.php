@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: User Cleanup Pro
-Description: Advanced user cleanup tool for administrators. Delete users by missing names, email domains, or roles, in safe batches with progress bar. Supports millions of users with memory-efficient scanning. Never deletes administrators.
-Version: 1.1.0
+Description: Advanced user cleanup tool for administrators. Delete users by missing names, email domains, or roles, and WooCommerce orders by status, in safe batches with progress bar. Supports millions of users/orders with memory-efficient scanning. Never deletes administrators.
+Version: 1.2.0
 Author: OpenAI GPT-4
 Requires at least: 5.6
 License: GPL2+
@@ -54,6 +54,12 @@ class UCP_User_Cleanup_Pro {
         }
         $output['delete_unlisted_domains'] = ! empty( $input['delete_unlisted_domains'] ) ? 1 : 0;
         $output['delete_role'] = ( isset( $input['delete_role'] ) && $input['delete_role'] !== '' ) ? sanitize_text_field( $input['delete_role'] ) : '';
+        $output['delete_wc_orders'] = ! empty( $input['delete_wc_orders'] ) ? 1 : 0;
+        if ( isset( $input['wc_order_statuses'] ) && is_array( $input['wc_order_statuses'] ) ) {
+            $output['wc_order_statuses'] = array_map( 'sanitize_text_field', $input['wc_order_statuses'] );
+        } else {
+            $output['wc_order_statuses'] = array();
+        }
         $batch_size = intval( $input['batch_size'] );
         // Expanded batch size options for better performance with large datasets
         $output['batch_size'] = in_array( $batch_size, array( 50, 100, 250, 500, 1000 ) ) ? $batch_size : 100;
@@ -72,6 +78,8 @@ class UCP_User_Cleanup_Pro {
         $delete_unlisted_domains = ! empty( $options['delete_unlisted_domains'] ) ? 1 : 0;
         $allowed_domains         = isset( $options['allowed_domains'] ) ? esc_attr( $options['allowed_domains'] ) : '';
         $delete_role             = isset( $options['delete_role'] ) ? esc_attr( $options['delete_role'] ) : '';
+        $delete_wc_orders        = ! empty( $options['delete_wc_orders'] ) ? 1 : 0;
+        $wc_order_statuses       = isset( $options['wc_order_statuses'] ) ? $options['wc_order_statuses'] : array();
         $batch_size              = isset( $options['batch_size'] ) ? intval( $options['batch_size'] ) : 100;
         ?>
         <div class="wrap">
@@ -101,6 +109,20 @@ class UCP_User_Cleanup_Pro {
                             <?php $this->role_dropdown( $delete_role ); ?>
                         </td>
                     </tr>
+                    <?php if ( class_exists( 'WooCommerce' ) ) : ?>
+                    <tr>
+                        <th><?php esc_html_e( 'Delete WooCommerce orders', 'user-cleanup-pro' ); ?></th>
+                        <td>
+                            <input type="checkbox" name="<?php echo self::OPTION_KEY; ?>[delete_wc_orders]" value="1" <?php checked( $delete_wc_orders, 1 ); ?> id="delete_wc_orders" />
+                            <label for="delete_wc_orders"><?php esc_html_e( 'Delete WooCommerce orders with all related data', 'user-cleanup-pro' ); ?></label>
+                            <div id="wc_order_statuses_wrapper" style="margin-top:10px; <?php echo $delete_wc_orders ? '' : 'display:none;'; ?>">
+                                <label><?php esc_html_e( 'Order statuses to delete:', 'user-cleanup-pro' ); ?></label><br>
+                                <?php $this->wc_order_status_checkboxes( $wc_order_statuses ); ?>
+                                <p class="description"><?php esc_html_e( 'Select which order statuses to delete. This will remove orders, order items, order meta, and all related data.', 'user-cleanup-pro' ); ?></p>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                     <tr>
                         <th><?php esc_html_e( 'Batch size for deletion', 'user-cleanup-pro' ); ?></th>
                         <td>
@@ -120,7 +142,7 @@ class UCP_User_Cleanup_Pro {
             <hr>
             <h2><?php esc_html_e( 'Start User Cleanup', 'user-cleanup-pro' ); ?></h2>
             <div class="notice notice-warning inline">
-                <p><strong><?php esc_html_e( 'Warning:', 'user-cleanup-pro' ); ?></strong> <?php esc_html_e( 'This action cannot be undone. Please backup your database before proceeding. The process will scan all users first, then delete them in batches.', 'user-cleanup-pro' ); ?></p>
+                <p><strong><?php esc_html_e( 'Warning:', 'user-cleanup-pro' ); ?></strong> <?php esc_html_e( 'This action cannot be undone. Please backup your database before proceeding. The process will scan all users and orders first, then delete them in batches.', 'user-cleanup-pro' ); ?></p>
             </div>
             <button id="ucp-start-deletion" class="button button-primary"><?php esc_html_e( 'Start Deletion Process', 'user-cleanup-pro' ); ?></button>
             <div id="ucp-progress-wrapper" style="display:none; margin-top:10px;">
@@ -135,11 +157,20 @@ class UCP_User_Cleanup_Pro {
         jQuery(document).ready(function($) {
             var total = 0, deleted = 0, batchSize = 100, isRunning = false, isScanning = false;
             
+            // Toggle WooCommerce order status options
+            $('#delete_wc_orders').on('change', function() {
+                if ($(this).is(':checked')) {
+                    $('#wc_order_statuses_wrapper').show();
+                } else {
+                    $('#wc_order_statuses_wrapper').hide();
+                }
+            });
+            
             function updateProgress() {
                 var percent = total > 0 ? Math.round( deleted / total * 100 ) : 0;
                 $('#ucp-progress-inner').css('width', percent + '%');
                 if ( isScanning ) {
-                    $('#ucp-progress-label').text('Scanning users...');
+                    $('#ucp-progress-label').text('Scanning users and orders...');
                 } else {
                     $('#ucp-progress-label').text(deleted + ' deleted / ' + total + ' total (' + percent + '%)');
                 }
@@ -306,6 +337,20 @@ class UCP_User_Cleanup_Pro {
         echo '</select>';
     }
 
+    private function wc_order_status_checkboxes( $selected = array() ) {
+        if ( ! class_exists( 'WooCommerce' ) ) return;
+        
+        $order_statuses = wc_get_order_statuses();
+        
+        foreach ( $order_statuses as $status_key => $status_name ) {
+            $checked = in_array( $status_key, $selected ) ? 'checked' : '';
+            echo '<label style="display:inline-block; margin-right:15px; margin-bottom:5px;">';
+            echo '<input type="checkbox" name="' . self::OPTION_KEY . '[wc_order_statuses][]" value="' . esc_attr( $status_key ) . '" ' . $checked . '> ';
+            echo esc_html( $status_name );
+            echo '</label>';
+        }
+    }
+
     public function ajax_start_deletion() {
         check_ajax_referer( 'ucp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
@@ -320,6 +365,8 @@ class UCP_User_Cleanup_Pro {
         $delete_unlisted_domains = ! empty( $options['delete_unlisted_domains'] );
         $allowed_domains         = isset( $options['allowed_domains'] ) ? explode( ',', strtolower( $options['allowed_domains'] ) ) : array();
         $delete_role             = isset( $options['delete_role'] ) ? sanitize_text_field( $options['delete_role'] ) : '';
+        $delete_wc_orders        = ! empty( $options['delete_wc_orders'] );
+        $wc_order_statuses       = isset( $options['wc_order_statuses'] ) && is_array( $options['wc_order_statuses'] ) ? $options['wc_order_statuses'] : array();
         $batch_size              = isset( $options['batch_size'] ) ? intval( $options['batch_size'] ) : 100;
 
         // Clean allowed domains array
@@ -328,17 +375,23 @@ class UCP_User_Cleanup_Pro {
         // Start scanning process - store scanning state in transient
         delete_transient( 'ucp_scan_state' );
         delete_transient( 'ucp_user_ids_to_delete' );
+        delete_transient( 'ucp_wc_order_ids_to_delete' );
         
         $scan_state = array(
             'offset' => 0,
             'total_scanned' => 0,
             'total_to_delete' => 0,
+            'wc_offset' => 0,
+            'wc_total_scanned' => 0,
+            'wc_total_to_delete' => 0,
             'scan_batch_size' => 1000, // Scan in smaller batches for memory efficiency
             'criteria' => array(
                 'delete_no_name' => $delete_no_name,
                 'delete_unlisted_domains' => $delete_unlisted_domains,
                 'allowed_domains' => $allowed_domains,
-                'delete_role' => $delete_role
+                'delete_role' => $delete_role,
+                'delete_wc_orders' => $delete_wc_orders,
+                'wc_order_statuses' => $wc_order_statuses
             )
         );
         
@@ -383,18 +436,36 @@ class UCP_User_Cleanup_Pro {
         $users = $user_query->get_results();
         
         if ( empty( $users ) ) {
-            // Scanning complete
-            $existing_ids = get_transient( 'ucp_user_ids_to_delete' );
-            $total_to_delete = is_array( $existing_ids ) ? count( $existing_ids ) : 0;
+            // Users scanning complete, now scan WooCommerce orders if needed
+            if ( $criteria['delete_wc_orders'] && class_exists( 'WooCommerce' ) && ! empty( $criteria['wc_order_statuses'] ) ) {
+                return $this->scan_wc_orders_batch( $scan_state );
+            }
+            
+            // All scanning complete
+            $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
+            $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+            $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
+            $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
+            $total_to_delete = $total_users + $total_orders;
             
             delete_transient( 'ucp_scan_state' );
+            
+            $message = '';
+            if ( $total_users > 0 && $total_orders > 0 ) {
+                $message = "Scan complete. Found {$total_users} users and {$total_orders} orders to delete.";
+            } elseif ( $total_users > 0 ) {
+                $message = "Scan complete. Found {$total_users} users to delete.";
+            } elseif ( $total_orders > 0 ) {
+                $message = "Scan complete. Found {$total_orders} orders to delete.";
+            } else {
+                $message = 'Scan complete. No users or orders found matching criteria.';
+            }
             
             wp_send_json_success( array(
                 'scan_complete' => true,
                 'total' => $total_to_delete,
                 'batch_size' => get_option( self::OPTION_KEY )['batch_size'] ?? 100,
-                'message' => $total_to_delete > 0 
-                    ? "Scan complete. Found {$total_to_delete} users to delete." 
+                'message' => $message 
                     : 'Scan complete. No users found matching criteria.'
             ) );
         }
@@ -471,6 +542,76 @@ class UCP_User_Cleanup_Pro {
         ) );
     }
 
+    private function scan_wc_orders_batch( $scan_state ) {
+        if ( ! class_exists( 'WooCommerce' ) ) {
+            wp_send_json_error( array( 'message' => 'WooCommerce not found.' ) );
+        }
+        
+        $criteria = $scan_state['criteria'];
+        $wc_offset = $scan_state['wc_offset'];
+        $scan_batch_size = $scan_state['scan_batch_size'];
+        
+        $args = array(
+            'limit' => $scan_batch_size,
+            'offset' => $wc_offset,
+            'status' => $criteria['wc_order_statuses'],
+            'return' => 'ids'
+        );
+        
+        $order_ids = wc_get_orders( $args );
+        
+        if ( empty( $order_ids ) ) {
+            // WooCommerce scanning complete
+            $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
+            $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+            $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
+            $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
+            $total_to_delete = $total_users + $total_orders;
+            
+            delete_transient( 'ucp_scan_state' );
+            
+            $message = '';
+            if ( $total_users > 0 && $total_orders > 0 ) {
+                $message = "Scan complete. Found {$total_users} users and {$total_orders} orders to delete.";
+            } elseif ( $total_users > 0 ) {
+                $message = "Scan complete. Found {$total_users} users to delete.";
+            } elseif ( $total_orders > 0 ) {
+                $message = "Scan complete. Found {$total_orders} orders to delete.";
+            } else {
+                $message = 'Scan complete. No users or orders found matching criteria.';
+            }
+            
+            wp_send_json_success( array(
+                'scan_complete' => true,
+                'total' => $total_to_delete,
+                'batch_size' => get_option( self::OPTION_KEY )['batch_size'] ?? 100,
+                'message' => $message
+            ) );
+        }
+        
+        // Store found order IDs
+        $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+        if ( ! is_array( $existing_order_ids ) ) {
+            $existing_order_ids = array();
+        }
+        $existing_order_ids = array_merge( $existing_order_ids, $order_ids );
+        set_transient( 'ucp_wc_order_ids_to_delete', $existing_order_ids, HOUR_IN_SECONDS );
+        
+        // Update scan state
+        $scan_state['wc_offset'] += $scan_batch_size;
+        $scan_state['wc_total_scanned'] += count( $order_ids );
+        $scan_state['wc_total_to_delete'] += count( $order_ids );
+        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        
+        wp_send_json_success( array(
+            'scan_complete' => false,
+            'scanned' => $scan_state['total_scanned'] + $scan_state['wc_total_scanned'],
+            'found' => $scan_state['total_to_delete'] + $scan_state['wc_total_to_delete'],
+            'batch_found' => count( $order_ids ),
+            'message' => "Scanned {$scan_state['total_scanned']} users and {$scan_state['wc_total_scanned']} orders, found {$scan_state['total_to_delete']} users and {$scan_state['wc_total_to_delete']} orders to delete..."
+        ) );
+    }
+
     public function ajax_run_batch() {
         check_ajax_referer( 'ucp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
@@ -482,19 +623,30 @@ class UCP_User_Cleanup_Pro {
         
         $batch_size = isset( $_POST['batch_size'] ) ? intval( $_POST['batch_size'] ) : 100;
         
-        // Get IDs from transient storage
-        $all_ids = get_transient( 'ucp_user_ids_to_delete' );
-        if ( ! is_array( $all_ids ) || empty( $all_ids ) ) {
+        // Get IDs from transient storage - prioritize users first, then orders
+        $all_user_ids = get_transient( 'ucp_user_ids_to_delete' );
+        $all_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+        
+        if ( is_array( $all_user_ids ) && ! empty( $all_user_ids ) ) {
+            // Process users first
+            return $this->delete_users_batch( $all_user_ids, $batch_size );
+        } elseif ( is_array( $all_order_ids ) && ! empty( $all_order_ids ) ) {
+            // Process orders after users are done
+            return $this->delete_orders_batch( $all_order_ids, $batch_size );
+        } else {
+            // Nothing left to delete
             wp_send_json_success( array(
                 'deleted' => 0,
                 'remaining' => 0,
-                'log' => array( 'No users left to delete.' ),
+                'log' => array( 'No users or orders left to delete.' ),
                 'complete' => true
             ) );
         }
-        
-        $to_delete = array_slice( $all_ids, 0, $batch_size );
-        $remaining_ids = array_slice( $all_ids, $batch_size );
+    }
+
+    private function delete_users_batch( $all_user_ids, $batch_size ) {
+        $to_delete = array_slice( $all_user_ids, 0, $batch_size );
+        $remaining_ids = array_slice( $all_user_ids, $batch_size );
         
         $deleted_count = 0;
         $log = array();
@@ -544,6 +696,62 @@ class UCP_User_Cleanup_Pro {
             delete_transient( 'ucp_user_ids_to_delete' );
         }
         
+        // Check if there are orders to delete after users are done
+        $remaining_orders = get_transient( 'ucp_wc_order_ids_to_delete' );
+        $total_remaining = count( $remaining_ids ) + ( is_array( $remaining_orders ) ? count( $remaining_orders ) : 0 );
+        
+        wp_send_json_success( array(
+            'deleted' => $deleted_count,
+            'remaining' => $total_remaining,
+            'log' => $log,
+            'complete' => $total_remaining === 0
+        ) );
+    }
+
+    private function delete_orders_batch( $all_order_ids, $batch_size ) {
+        if ( ! class_exists( 'WooCommerce' ) ) {
+            wp_send_json_error( array( 'message' => 'WooCommerce not found.' ) );
+        }
+        
+        $to_delete = array_slice( $all_order_ids, 0, $batch_size );
+        $remaining_ids = array_slice( $all_order_ids, $batch_size );
+        
+        $deleted_count = 0;
+        $log = array();
+        
+        foreach ( $to_delete as $order_id ) {
+            try {
+                $order = wc_get_order( $order_id );
+                if ( ! $order ) {
+                    $log[] = "Order ID {$order_id} not found (already deleted?).";
+                    continue;
+                }
+                
+                // Delete order completely with all metadata
+                $result = $order->delete( true ); // true = force delete
+                
+                if ( $result ) {
+                    $deleted_count++;
+                    $log[] = "Deleted order ID {$order_id}.";
+                } else {
+                    $log[] = "Failed to delete order ID {$order_id}.";
+                }
+            } catch ( Exception $e ) {
+                $log[] = "Error deleting order ID {$order_id}: " . $e->getMessage();
+            }
+            
+            // Memory cleanup
+            wp_cache_delete( $order_id, 'posts' );
+            wp_cache_delete( $order_id, 'post_meta' );
+        }
+        
+        // Update stored IDs
+        if ( ! empty( $remaining_ids ) ) {
+            set_transient( 'ucp_wc_order_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
+        } else {
+            delete_transient( 'ucp_wc_order_ids_to_delete' );
+        }
+        
         wp_send_json_success( array(
             'deleted' => $deleted_count,
             'remaining' => count( $remaining_ids ),
@@ -555,6 +763,7 @@ class UCP_User_Cleanup_Pro {
     public function cleanup_transients() {
         delete_transient( 'ucp_scan_state' );
         delete_transient( 'ucp_user_ids_to_delete' );
+        delete_transient( 'ucp_wc_order_ids_to_delete' );
     }
 
 }
