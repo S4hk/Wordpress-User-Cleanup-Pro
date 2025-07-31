@@ -1,0 +1,25 @@
+#wbcp-progress-bar { 
+    max-width: 400px; 
+    margin-top: 5px; 
+}
+
+#wbcp-progress-inner { 
+    transition: width 0.3s; 
+}
+
+#wbcp-log { 
+    background: #f6f6f6; 
+    border: 1px solid #e0e0e0; 
+    border-radius: 4px; 
+    padding: 8px; 
+}
+
+.wbcp-form-section {
+    margin-bottom: 20px;
+}
+
+.wbcp-checkbox-group label {
+    display: inline-block; 
+    margin-right: 15px; 
+    margin-bottom: 5px;
+}
