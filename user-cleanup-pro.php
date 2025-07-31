@@ -60,6 +60,12 @@ class UCP_User_Cleanup_Pro {
         } else {
             $output['wc_order_statuses'] = array();
         }
+        $output['delete_wc_coupons'] = ! empty( $input['delete_wc_coupons'] ) ? 1 : 0;
+        if ( isset( $input['wc_coupon_statuses'] ) && is_array( $input['wc_coupon_statuses'] ) ) {
+            $output['wc_coupon_statuses'] = array_map( 'sanitize_text_field', $input['wc_coupon_statuses'] );
+        } else {
+            $output['wc_coupon_statuses'] = array();
+        }
         $batch_size = intval( $input['batch_size'] );
         // Expanded batch size options for better performance with large datasets
         $output['batch_size'] = in_array( $batch_size, array( 50, 100, 250, 500, 1000 ) ) ? $batch_size : 100;
@@ -80,6 +86,8 @@ class UCP_User_Cleanup_Pro {
         $delete_role             = isset( $options['delete_role'] ) ? esc_attr( $options['delete_role'] ) : '';
         $delete_wc_orders        = ! empty( $options['delete_wc_orders'] ) ? 1 : 0;
         $wc_order_statuses       = isset( $options['wc_order_statuses'] ) ? $options['wc_order_statuses'] : array();
+        $delete_wc_coupons       = ! empty( $options['delete_wc_coupons'] ) ? 1 : 0;
+        $wc_coupon_statuses      = isset( $options['wc_coupon_statuses'] ) ? $options['wc_coupon_statuses'] : array();
         $batch_size              = isset( $options['batch_size'] ) ? intval( $options['batch_size'] ) : 100;
         ?>
         <div class="wrap">
@@ -119,6 +127,18 @@ class UCP_User_Cleanup_Pro {
                                 <label><?php esc_html_e( 'Order statuses to delete:', 'user-cleanup-pro' ); ?></label><br>
                                 <?php $this->wc_order_status_checkboxes( $wc_order_statuses ); ?>
                                 <p class="description"><?php esc_html_e( 'Select which order statuses to delete. This will remove orders, order items, order meta, and all related data.', 'user-cleanup-pro' ); ?></p>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e( 'Delete WooCommerce coupons', 'user-cleanup-pro' ); ?></th>
+                        <td>
+                            <input type="checkbox" name="<?php echo self::OPTION_KEY; ?>[delete_wc_coupons]" value="1" <?php checked( $delete_wc_coupons, 1 ); ?> id="delete_wc_coupons" />
+                            <label for="delete_wc_coupons"><?php esc_html_e( 'Delete WooCommerce coupons with all related data', 'user-cleanup-pro' ); ?></label>
+                            <div id="wc_coupon_statuses_wrapper" style="margin-top:10px; <?php echo $delete_wc_coupons ? '' : 'display:none;'; ?>">
+                                <label><?php esc_html_e( 'Coupon statuses to delete:', 'user-cleanup-pro' ); ?></label><br>
+                                <?php $this->wc_coupon_status_checkboxes( $wc_coupon_statuses ); ?>
+                                <p class="description"><?php esc_html_e( 'Select which coupon statuses to delete. This will remove coupons, coupon meta, and all related data.', 'user-cleanup-pro' ); ?></p>
                             </div>
                         </td>
                     </tr>
@@ -163,6 +183,15 @@ class UCP_User_Cleanup_Pro {
                     $('#wc_order_statuses_wrapper').show();
                 } else {
                     $('#wc_order_statuses_wrapper').hide();
+                }
+            });
+            
+            // Toggle WooCommerce coupon status options
+            $('#delete_wc_coupons').on('change', function() {
+                if ($(this).is(':checked')) {
+                    $('#wc_coupon_statuses_wrapper').show();
+                } else {
+                    $('#wc_coupon_statuses_wrapper').hide();
                 }
             });
             
@@ -351,6 +380,26 @@ class UCP_User_Cleanup_Pro {
         }
     }
 
+    private function wc_coupon_status_checkboxes( $selected = array() ) {
+        if ( ! class_exists( 'WooCommerce' ) ) return;
+        
+        $coupon_statuses = array(
+            'publish' => __( 'Published (Active)', 'user-cleanup-pro' ),
+            'draft' => __( 'Draft', 'user-cleanup-pro' ),
+            'pending' => __( 'Pending Review', 'user-cleanup-pro' ),
+            'private' => __( 'Private', 'user-cleanup-pro' ),
+            'trash' => __( 'Trash', 'user-cleanup-pro' )
+        );
+        
+        foreach ( $coupon_statuses as $status_key => $status_name ) {
+            $checked = in_array( $status_key, $selected ) ? 'checked' : '';
+            echo '<label style="display:inline-block; margin-right:15px; margin-bottom:5px;">';
+            echo '<input type="checkbox" name="' . self::OPTION_KEY . '[wc_coupon_statuses][]" value="' . esc_attr( $status_key ) . '" ' . $checked . '> ';
+            echo esc_html( $status_name );
+            echo '</label>';
+        }
+    }
+
     public function ajax_start_deletion() {
         check_ajax_referer( 'ucp_ajax_nonce' );
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
@@ -367,6 +416,8 @@ class UCP_User_Cleanup_Pro {
         $delete_role             = isset( $options['delete_role'] ) ? sanitize_text_field( $options['delete_role'] ) : '';
         $delete_wc_orders        = ! empty( $options['delete_wc_orders'] );
         $wc_order_statuses       = isset( $options['wc_order_statuses'] ) && is_array( $options['wc_order_statuses'] ) ? $options['wc_order_statuses'] : array();
+        $delete_wc_coupons       = ! empty( $options['delete_wc_coupons'] );
+        $wc_coupon_statuses      = isset( $options['wc_coupon_statuses'] ) && is_array( $options['wc_coupon_statuses'] ) ? $options['wc_coupon_statuses'] : array();
         $batch_size              = isset( $options['batch_size'] ) ? intval( $options['batch_size'] ) : 100;
 
         // Clean allowed domains array
@@ -376,6 +427,7 @@ class UCP_User_Cleanup_Pro {
         delete_transient( 'ucp_scan_state' );
         delete_transient( 'ucp_user_ids_to_delete' );
         delete_transient( 'ucp_wc_order_ids_to_delete' );
+        delete_transient( 'ucp_wc_coupon_ids_to_delete' );
         
         $scan_state = array(
             'offset' => 0,
@@ -384,6 +436,9 @@ class UCP_User_Cleanup_Pro {
             'wc_offset' => 0,
             'wc_total_scanned' => 0,
             'wc_total_to_delete' => 0,
+            'wc_coupon_offset' => 0,
+            'wc_coupon_total_scanned' => 0,
+            'wc_coupon_total_to_delete' => 0,
             'scan_batch_size' => 1000, // Scan in smaller batches for memory efficiency
             'criteria' => array(
                 'delete_no_name' => $delete_no_name,
@@ -391,7 +446,9 @@ class UCP_User_Cleanup_Pro {
                 'allowed_domains' => $allowed_domains,
                 'delete_role' => $delete_role,
                 'delete_wc_orders' => $delete_wc_orders,
-                'wc_order_statuses' => $wc_order_statuses
+                'wc_order_statuses' => $wc_order_statuses,
+                'delete_wc_coupons' => $delete_wc_coupons,
+                'wc_coupon_statuses' => $wc_coupon_statuses
             )
         );
         
@@ -440,33 +497,38 @@ class UCP_User_Cleanup_Pro {
             if ( $criteria['delete_wc_orders'] && class_exists( 'WooCommerce' ) && ! empty( $criteria['wc_order_statuses'] ) ) {
                 return $this->scan_wc_orders_batch( $scan_state );
             }
+            // Then scan WooCommerce coupons if needed
+            elseif ( $criteria['delete_wc_coupons'] && class_exists( 'WooCommerce' ) && ! empty( $criteria['wc_coupon_statuses'] ) ) {
+                return $this->scan_wc_coupons_batch( $scan_state );
+            }
             
             // All scanning complete
             $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
             $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+            $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
             $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
             $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
-            $total_to_delete = $total_users + $total_orders;
+            $total_coupons = is_array( $existing_coupon_ids ) ? count( $existing_coupon_ids ) : 0;
+            $total_to_delete = $total_users + $total_orders + $total_coupons;
             
             delete_transient( 'ucp_scan_state' );
             
-            $message = '';
-            if ( $total_users > 0 && $total_orders > 0 ) {
-                $message = "Scan complete. Found {$total_users} users and {$total_orders} orders to delete.";
-            } elseif ( $total_users > 0 ) {
-                $message = "Scan complete. Found {$total_users} users to delete.";
-            } elseif ( $total_orders > 0 ) {
-                $message = "Scan complete. Found {$total_orders} orders to delete.";
+            $message_parts = array();
+            if ( $total_users > 0 ) $message_parts[] = "{$total_users} users";
+            if ( $total_orders > 0 ) $message_parts[] = "{$total_orders} orders";
+            if ( $total_coupons > 0 ) $message_parts[] = "{$total_coupons} coupons";
+            
+            if ( ! empty( $message_parts ) ) {
+                $message = "Scan complete. Found " . implode( ', ', $message_parts ) . " to delete.";
             } else {
-                $message = 'Scan complete. No users or orders found matching criteria.';
+                $message = 'Scan complete. No users, orders, or coupons found matching criteria.';
             }
             
             wp_send_json_success( array(
                 'scan_complete' => true,
                 'total' => $total_to_delete,
                 'batch_size' => get_option( self::OPTION_KEY )['batch_size'] ?? 100,
-                'message' => $message 
-                    : 'Scan complete. No users found matching criteria.'
+                'message' => $message
             ) );
         }
         
@@ -561,24 +623,31 @@ class UCP_User_Cleanup_Pro {
         $order_ids = wc_get_orders( $args );
         
         if ( empty( $order_ids ) ) {
-            // WooCommerce scanning complete
+            // WooCommerce orders scanning complete, check for coupons
+            if ( $criteria['delete_wc_coupons'] && ! empty( $criteria['wc_coupon_statuses'] ) ) {
+                return $this->scan_wc_coupons_batch( $scan_state );
+            }
+            
+            // All scanning complete
             $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
             $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+            $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
             $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
             $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
-            $total_to_delete = $total_users + $total_orders;
+            $total_coupons = is_array( $existing_coupon_ids ) ? count( $existing_coupon_ids ) : 0;
+            $total_to_delete = $total_users + $total_orders + $total_coupons;
             
             delete_transient( 'ucp_scan_state' );
             
-            $message = '';
-            if ( $total_users > 0 && $total_orders > 0 ) {
-                $message = "Scan complete. Found {$total_users} users and {$total_orders} orders to delete.";
-            } elseif ( $total_users > 0 ) {
-                $message = "Scan complete. Found {$total_users} users to delete.";
-            } elseif ( $total_orders > 0 ) {
-                $message = "Scan complete. Found {$total_orders} orders to delete.";
+            $message_parts = array();
+            if ( $total_users > 0 ) $message_parts[] = "{$total_users} users";
+            if ( $total_orders > 0 ) $message_parts[] = "{$total_orders} orders";
+            if ( $total_coupons > 0 ) $message_parts[] = "{$total_coupons} coupons";
+            
+            if ( ! empty( $message_parts ) ) {
+                $message = "Scan complete. Found " . implode( ', ', $message_parts ) . " to delete.";
             } else {
-                $message = 'Scan complete. No users or orders found matching criteria.';
+                $message = 'Scan complete. No users, orders, or coupons found matching criteria.';
             }
             
             wp_send_json_success( array(
@@ -603,12 +672,92 @@ class UCP_User_Cleanup_Pro {
         $scan_state['wc_total_to_delete'] += count( $order_ids );
         set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
         
+        $total_scanned = $scan_state['total_scanned'] + $scan_state['wc_total_scanned'];
+        $total_found = $scan_state['total_to_delete'] + $scan_state['wc_total_to_delete'];
+        
         wp_send_json_success( array(
             'scan_complete' => false,
-            'scanned' => $scan_state['total_scanned'] + $scan_state['wc_total_scanned'],
-            'found' => $scan_state['total_to_delete'] + $scan_state['wc_total_to_delete'],
+            'scanned' => $total_scanned,
+            'found' => $total_found,
             'batch_found' => count( $order_ids ),
             'message' => "Scanned {$scan_state['total_scanned']} users and {$scan_state['wc_total_scanned']} orders, found {$scan_state['total_to_delete']} users and {$scan_state['wc_total_to_delete']} orders to delete..."
+        ) );
+    }
+
+    private function scan_wc_coupons_batch( $scan_state ) {
+        if ( ! class_exists( 'WooCommerce' ) ) {
+            wp_send_json_error( array( 'message' => 'WooCommerce not found.' ) );
+        }
+        
+        $criteria = $scan_state['criteria'];
+        $wc_coupon_offset = $scan_state['wc_coupon_offset'];
+        $scan_batch_size = $scan_state['scan_batch_size'];
+        
+        $args = array(
+            'post_type' => 'shop_coupon',
+            'post_status' => $criteria['wc_coupon_statuses'],
+            'posts_per_page' => $scan_batch_size,
+            'offset' => $wc_coupon_offset,
+            'fields' => 'ids'
+        );
+        
+        $coupon_query = new WP_Query( $args );
+        $coupon_ids = $coupon_query->posts;
+        
+        if ( empty( $coupon_ids ) ) {
+            // WooCommerce coupons scanning complete
+            $existing_user_ids = get_transient( 'ucp_user_ids_to_delete' );
+            $existing_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+            $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+            $total_users = is_array( $existing_user_ids ) ? count( $existing_user_ids ) : 0;
+            $total_orders = is_array( $existing_order_ids ) ? count( $existing_order_ids ) : 0;
+            $total_coupons = is_array( $existing_coupon_ids ) ? count( $existing_coupon_ids ) : 0;
+            $total_to_delete = $total_users + $total_orders + $total_coupons;
+            
+            delete_transient( 'ucp_scan_state' );
+            
+            $message_parts = array();
+            if ( $total_users > 0 ) $message_parts[] = "{$total_users} users";
+            if ( $total_orders > 0 ) $message_parts[] = "{$total_orders} orders";
+            if ( $total_coupons > 0 ) $message_parts[] = "{$total_coupons} coupons";
+            
+            if ( ! empty( $message_parts ) ) {
+                $message = "Scan complete. Found " . implode( ', ', $message_parts ) . " to delete.";
+            } else {
+                $message = 'Scan complete. No users, orders, or coupons found matching criteria.';
+            }
+            
+            wp_send_json_success( array(
+                'scan_complete' => true,
+                'total' => $total_to_delete,
+                'batch_size' => get_option( self::OPTION_KEY )['batch_size'] ?? 100,
+                'message' => $message
+            ) );
+        }
+        
+        // Store found coupon IDs
+        $existing_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        if ( ! is_array( $existing_coupon_ids ) ) {
+            $existing_coupon_ids = array();
+        }
+        $existing_coupon_ids = array_merge( $existing_coupon_ids, $coupon_ids );
+        set_transient( 'ucp_wc_coupon_ids_to_delete', $existing_coupon_ids, HOUR_IN_SECONDS );
+        
+        // Update scan state
+        $scan_state['wc_coupon_offset'] += $scan_batch_size;
+        $scan_state['wc_coupon_total_scanned'] += count( $coupon_ids );
+        $scan_state['wc_coupon_total_to_delete'] += count( $coupon_ids );
+        set_transient( 'ucp_scan_state', $scan_state, HOUR_IN_SECONDS );
+        
+        $total_scanned = $scan_state['total_scanned'] + $scan_state['wc_total_scanned'] + $scan_state['wc_coupon_total_scanned'];
+        $total_found = $scan_state['total_to_delete'] + $scan_state['wc_total_to_delete'] + $scan_state['wc_coupon_total_to_delete'];
+        
+        wp_send_json_success( array(
+            'scan_complete' => false,
+            'scanned' => $total_scanned,
+            'found' => $total_found,
+            'batch_found' => count( $coupon_ids ),
+            'message' => "Scanned {$scan_state['total_scanned']} users, {$scan_state['wc_total_scanned']} orders, and {$scan_state['wc_coupon_total_scanned']} coupons, found {$scan_state['total_to_delete']} users, {$scan_state['wc_total_to_delete']} orders, and {$scan_state['wc_coupon_total_to_delete']} coupons to delete..."
         ) );
     }
 
@@ -623,9 +772,10 @@ class UCP_User_Cleanup_Pro {
         
         $batch_size = isset( $_POST['batch_size'] ) ? intval( $_POST['batch_size'] ) : 100;
         
-        // Get IDs from transient storage - prioritize users first, then orders
+        // Get IDs from transient storage - prioritize users first, then orders, then coupons
         $all_user_ids = get_transient( 'ucp_user_ids_to_delete' );
         $all_order_ids = get_transient( 'ucp_wc_order_ids_to_delete' );
+        $all_coupon_ids = get_transient( 'ucp_wc_coupon_ids_to_delete' );
         
         if ( is_array( $all_user_ids ) && ! empty( $all_user_ids ) ) {
             // Process users first
@@ -633,12 +783,15 @@ class UCP_User_Cleanup_Pro {
         } elseif ( is_array( $all_order_ids ) && ! empty( $all_order_ids ) ) {
             // Process orders after users are done
             return $this->delete_orders_batch( $all_order_ids, $batch_size );
+        } elseif ( is_array( $all_coupon_ids ) && ! empty( $all_coupon_ids ) ) {
+            // Process coupons after orders are done
+            return $this->delete_coupons_batch( $all_coupon_ids, $batch_size );
         } else {
             // Nothing left to delete
             wp_send_json_success( array(
                 'deleted' => 0,
                 'remaining' => 0,
-                'log' => array( 'No users or orders left to delete.' ),
+                'log' => array( 'No users, orders, or coupons left to delete.' ),
                 'complete' => true
             ) );
         }
@@ -696,9 +849,12 @@ class UCP_User_Cleanup_Pro {
             delete_transient( 'ucp_user_ids_to_delete' );
         }
         
-        // Check if there are orders to delete after users are done
+        // Check if there are orders or coupons to delete after users are done
         $remaining_orders = get_transient( 'ucp_wc_order_ids_to_delete' );
-        $total_remaining = count( $remaining_ids ) + ( is_array( $remaining_orders ) ? count( $remaining_orders ) : 0 );
+        $remaining_coupons = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        $total_remaining = count( $remaining_ids ) + 
+                          ( is_array( $remaining_orders ) ? count( $remaining_orders ) : 0 ) +
+                          ( is_array( $remaining_coupons ) ? count( $remaining_coupons ) : 0 );
         
         wp_send_json_success( array(
             'deleted' => $deleted_count,
@@ -752,6 +908,65 @@ class UCP_User_Cleanup_Pro {
             delete_transient( 'ucp_wc_order_ids_to_delete' );
         }
         
+        // Check if there are coupons to delete after orders are done
+        $remaining_coupons = get_transient( 'ucp_wc_coupon_ids_to_delete' );
+        $total_remaining = count( $remaining_ids ) + ( is_array( $remaining_coupons ) ? count( $remaining_coupons ) : 0 );
+        
+        wp_send_json_success( array(
+            'deleted' => $deleted_count,
+            'remaining' => $total_remaining,
+            'log' => $log,
+            'complete' => $total_remaining === 0
+        ) );
+    }
+
+    private function delete_coupons_batch( $all_coupon_ids, $batch_size ) {
+        if ( ! class_exists( 'WooCommerce' ) ) {
+            wp_send_json_error( array( 'message' => 'WooCommerce not found.' ) );
+        }
+        
+        $to_delete = array_slice( $all_coupon_ids, 0, $batch_size );
+        $remaining_ids = array_slice( $all_coupon_ids, $batch_size );
+        
+        $deleted_count = 0;
+        $log = array();
+        
+        foreach ( $to_delete as $coupon_id ) {
+            try {
+                $coupon = new WC_Coupon( $coupon_id );
+                if ( ! $coupon->get_id() ) {
+                    $log[] = "Coupon ID {$coupon_id} not found (already deleted?).";
+                    continue;
+                }
+                
+                // Get coupon code for logging
+                $coupon_code = $coupon->get_code();
+                
+                // Delete coupon completely with all metadata
+                $result = wp_delete_post( $coupon_id, true ); // true = force delete, bypass trash
+                
+                if ( $result ) {
+                    $deleted_count++;
+                    $log[] = "Deleted coupon ID {$coupon_id} ('{$coupon_code}').";
+                } else {
+                    $log[] = "Failed to delete coupon ID {$coupon_id} ('{$coupon_code}').";
+                }
+            } catch ( Exception $e ) {
+                $log[] = "Error deleting coupon ID {$coupon_id}: " . $e->getMessage();
+            }
+            
+            // Memory cleanup
+            wp_cache_delete( $coupon_id, 'posts' );
+            wp_cache_delete( $coupon_id, 'post_meta' );
+        }
+        
+        // Update stored IDs
+        if ( ! empty( $remaining_ids ) ) {
+            set_transient( 'ucp_wc_coupon_ids_to_delete', $remaining_ids, HOUR_IN_SECONDS );
+        } else {
+            delete_transient( 'ucp_wc_coupon_ids_to_delete' );
+        }
+        
         wp_send_json_success( array(
             'deleted' => $deleted_count,
             'remaining' => count( $remaining_ids ),
@@ -764,6 +979,7 @@ class UCP_User_Cleanup_Pro {
         delete_transient( 'ucp_scan_state' );
         delete_transient( 'ucp_user_ids_to_delete' );
         delete_transient( 'ucp_wc_order_ids_to_delete' );
+        delete_transient( 'ucp_wc_coupon_ids_to_delete' );
     }
 
 }
