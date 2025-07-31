@@ -113,6 +113,7 @@ class WBCP_Admin {
             'draft' => __( 'Draft', 'wordpress-bulk-cleanup-pro' ),
             'trash' => __( 'Trash', 'wordpress-bulk-cleanup-pro' ),
             'private' => __( 'Private', 'wordpress-bulk-cleanup-pro' ),
+            'pending' => __( 'Pending', 'wordpress-bulk-cleanup-pro' ),
         );
 
         foreach ( $statuses as $status_key => $status_name ) {
