@@ -68,6 +68,3 @@ class WBCP_Ajax_Handler {
         }
     }
 }
-        ) );
-    }
-}

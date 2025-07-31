@@ -183,19 +183,6 @@ class WBCP_GitHub_Updater {
         return $changelog;
     }
 
-    public function force_check() {
-        delete_transient( 'wbcp_github_update_check' );
-        return $this->check_for_update();
-    }
-}
-        
-        // Convert markdown lists
-        $changelog = preg_replace( '/^\* (.+)$/m', '<li>$1</li>', $changelog );
-        $changelog = preg_replace( '/(<li>.+<\/li>)/s', '<ul>$1</ul>', $changelog );
-        
-        return $changelog;
-    }
-
     /**
      * Force check for updates (for manual checking)
      */
@@ -215,5 +202,3 @@ class WBCP_GitHub_Updater {
         );
     }
 }
-
-endif;

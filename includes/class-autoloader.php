@@ -25,16 +25,12 @@ class WBCP_Autoloader {
         }
 
         $file_name = 'class-' . strtolower( str_replace( '_', '-', substr( $class_name, 5 ) ) ) . '.php';
-        $file_path = WBCP_PLUGIN_DIR . 'includes/' . $file_name;
 
-        if ( file_exists( $file_path ) ) {
-            require_once $file_path;
-        }
-    }
-}
+        $possible_paths = array(
+            WBCP_PLUGIN_DIR . 'includes/' . $file_name,
             WBCP_PLUGIN_DIR . 'includes/deleter/' . $file_name,
         );
-        
+
         foreach ( $possible_paths as $file_path ) {
             if ( file_exists( $file_path ) ) {
                 require_once $file_path;
