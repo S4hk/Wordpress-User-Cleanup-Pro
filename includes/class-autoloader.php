@@ -22,6 +22,7 @@ class WBCP_Autoloader {
             WBCP_PLUGIN_DIR . 'includes/ajax/class-' . $class_file . '.php',
             WBCP_PLUGIN_DIR . 'includes/scanner/class-' . $class_file . '.php',
             WBCP_PLUGIN_DIR . 'includes/deleter/class-' . $class_file . '.php',
+            WBCP_PLUGIN_DIR . 'includes/updater/class-' . $class_file . '.php',
         );
         
         foreach ( $file_paths as $file_path ) {

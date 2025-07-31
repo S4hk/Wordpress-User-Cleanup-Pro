@@ -14,7 +14,7 @@ GitHub Branch: main
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Define plugin constants
-define( 'WBCP_VERSION', '1.2.1' );
+define( 'WBCP_VERSION', '1.2.2' );
 define( 'WBCP_PLUGIN_FILE', __FILE__ );
 define( 'WBCP_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 define( 'WBCP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
