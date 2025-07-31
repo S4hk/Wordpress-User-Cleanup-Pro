@@ -13,61 +13,61 @@ class WBCP_Ajax_Handler {
 
     private function init_hooks() {
         // Add Ajax hooks for admin users only
-        add_action( 'wp_ajax_wbcp_scan_users', array( $this, 'scan_users' ) );
-        add_action( 'wp_ajax_wbcp_delete_users', array( $this, 'delete_users' ) );
-        add_action( 'wp_ajax_wbcp_scan_orders', array( $this, 'scan_orders' ) );
-        add_action( 'wp_ajax_wbcp_delete_orders', array( $this, 'delete_orders' ) );
+        add_action( 'wp_ajax_wbcp_start_deletion', array( $this, 'start_deletion' ) );
+        add_action( 'wp_ajax_wbcp_scan_batch', array( $this, 'scan_batch' ) );
+        add_action( 'wp_ajax_wbcp_run_batch', array( $this, 'run_batch' ) );
     }
 
-    public function scan_users() {
+    public function start_deletion() {
         // Verify nonce and capabilities
-        if ( ! wp_verify_nonce( $_POST['nonce'], 'wbcp_nonce' ) || ! current_user_can( 'manage_options' ) ) {
-            wp_die( 'Unauthorized' );
+        if ( ! wp_verify_nonce( $_POST['_ajax_nonce'], 'wbcp_ajax_nonce' ) || ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Unauthorized' ) );
         }
 
-        // Placeholder for user scanning logic
-        wp_send_json_success( array(
-            'message' => 'User scanning functionality will be implemented here',
-            'count' => 0
-        ) );
+        try {
+            $processor = new WBCP_Deletion_Processor();
+            $result = $processor->start_scan();
+            wp_send_json_success( $result );
+        } catch ( Exception $e ) {
+            wp_send_json_error( array( 'message' => $e->getMessage() ) );
+        }
     }
 
-    public function delete_users() {
+    public function scan_batch() {
         // Verify nonce and capabilities
-        if ( ! wp_verify_nonce( $_POST['nonce'], 'wbcp_nonce' ) || ! current_user_can( 'manage_options' ) ) {
-            wp_die( 'Unauthorized' );
+        if ( ! wp_verify_nonce( $_POST['_ajax_nonce'], 'wbcp_ajax_nonce' ) || ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Unauthorized' ) );
         }
 
-        // Placeholder for user deletion logic
-        wp_send_json_success( array(
-            'message' => 'User deletion functionality will be implemented here',
-            'deleted' => 0
-        ) );
+        try {
+            $processor = new WBCP_Deletion_Processor();
+            $result = $processor->scan_batch();
+            
+            if ( isset( $result['error'] ) ) {
+                wp_send_json_error( array( 'message' => $result['error'] ) );
+            } else {
+                wp_send_json_success( $result );
+            }
+        } catch ( Exception $e ) {
+            wp_send_json_error( array( 'message' => $e->getMessage() ) );
+        }
     }
 
-    public function scan_orders() {
+    public function run_batch() {
         // Verify nonce and capabilities
-        if ( ! wp_verify_nonce( $_POST['nonce'], 'wbcp_nonce' ) || ! current_user_can( 'manage_options' ) ) {
-            wp_die( 'Unauthorized' );
+        if ( ! wp_verify_nonce( $_POST['_ajax_nonce'], 'wbcp_ajax_nonce' ) || ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Unauthorized' ) );
         }
 
-        // Placeholder for order scanning logic
-        wp_send_json_success( array(
-            'message' => 'Order scanning functionality will be implemented here',
-            'count' => 0
-        ) );
+        try {
+            $processor = new WBCP_Deletion_Processor();
+            $result = $processor->run_deletion_batch();
+            wp_send_json_success( $result );
+        } catch ( Exception $e ) {
+            wp_send_json_error( array( 'message' => $e->getMessage() ) );
+        }
     }
-
-    public function delete_orders() {
-        // Verify nonce and capabilities
-        if ( ! wp_verify_nonce( $_POST['nonce'], 'wbcp_nonce' ) || ! current_user_can( 'manage_options' ) ) {
-            wp_die( 'Unauthorized' );
-        }
-
-        // Placeholder for order deletion logic
-        wp_send_json_success( array(
-            'message' => 'Order deletion functionality will be implemented here',
-            'deleted' => 0
+}
         ) );
     }
 }

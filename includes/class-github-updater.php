@@ -2,88 +2,88 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-if ( ! class_exists( 'WBCP_GitHub_Updater' ) ) :
-
+/**
+ * GitHub updater for WBCP
+ */
 class WBCP_GitHub_Updater {
 
-    private $plugin_file;
-    private $plugin_basename;
-    private $github_repo;
-    private $current_version;
+    private $file;
     private $plugin_slug;
+    private $version;
+    private $username;
+    private $repository;
 
-    public function __construct( $plugin_file, $github_repo, $current_version ) {
-        $this->plugin_file = $plugin_file;
-        $this->plugin_basename = plugin_basename( $plugin_file );
-        $this->github_repo = $github_repo;
-        $this->current_version = $current_version;
-        $this->plugin_slug = dirname( $this->plugin_basename );
+    public function __construct( $file, $github_repo, $version ) {
+        $this->file = $file;
+        $this->plugin_slug = plugin_basename( $file );
+        $this->version = $version;
+        
+        // Parse GitHub repo
+        $repo_parts = explode( '/', $github_repo );
+        $this->username = $repo_parts[0];
+        $this->repository = $repo_parts[1];
 
-        // Hook into WordPress update system
-        add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'check_for_plugin_update' ) );
-        add_filter( 'plugins_api', array( $this, 'plugin_api_call' ), 10, 3 );
-        add_filter( 'upgrader_pre_download', array( $this, 'download_package' ), 10, 3 );
-        add_action( 'upgrader_process_complete', array( $this, 'after_update' ), 10, 2 );
+        add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'modify_transient' ), 10, 1 );
+        add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
+        add_filter( 'upgrader_post_install', array( $this, 'after_install' ), 10, 3 );
     }
 
-    /**
-     * Check for plugin updates
-     */
-    public function check_for_plugin_update( $transient ) {
-        if ( empty( $transient->checked ) ) {
-            return $transient;
-        }
-
-        $update_info = $this->check_for_update();
+    public function check_for_update() {
+        $remote_version = $this->get_remote_version();
         
-        if ( $update_info && version_compare( $this->current_version, $update_info['new_version'], '<' ) ) {
-            $transient->response[ $this->plugin_basename ] = (object) array(
-                'slug' => $this->plugin_slug,
-                'plugin' => $this->plugin_basename,
-                'new_version' => $update_info['new_version'],
-                'url' => $update_info['details_url'],
-                'package' => $update_info['download_url'],
-                'tested' => $update_info['tested'],
-                'requires_php' => $update_info['requires_php'],
-                'compatibility' => new stdClass()
+        if ( $remote_version && version_compare( $this->version, $remote_version, '<' ) ) {
+            return array(
+                'new_version' => $remote_version,
+                'package' => $this->get_download_url()
             );
         }
+        
+        return false;
+    }
 
+    private function get_remote_version() {
+        $request = wp_remote_get( "https://api.github.com/repos/{$this->username}/{$this->repository}/releases/latest" );
+        
+        if ( ! is_wp_error( $request ) && wp_remote_retrieve_response_code( $request ) === 200 ) {
+            $body = wp_remote_retrieve_body( $request );
+            $data = json_decode( $body, true );
+            
+            if ( isset( $data['tag_name'] ) ) {
+                return ltrim( $data['tag_name'], 'v' );
+            }
+        }
+        
+        return false;
+    }
+
+    private function get_download_url() {
+        return "https://github.com/{$this->username}/{$this->repository}/archive/main.zip";
+    }
+
+    public function modify_transient( $transient ) {
+        if ( isset( $transient->checked ) ) {
+            $remote_version = $this->get_remote_version();
+            
+            if ( $remote_version && version_compare( $this->version, $remote_version, '<' ) ) {
+                $transient->response[ $this->plugin_slug ] = (object) array(
+                    'slug' => $this->plugin_slug,
+                    'new_version' => $remote_version,
+                    'package' => $this->get_download_url()
+                );
+            }
+        }
+        
         return $transient;
     }
 
-    /**
-     * Get plugin information for the update details popup
-     */
-    public function plugin_api_call( $result, $action, $args ) {
-        if ( $action !== 'plugin_information' || $args->slug !== $this->plugin_slug ) {
-            return $result;
-        }
+    public function plugin_popup( $result, $action, $args ) {
+        return $result;
+    }
 
-        $update_info = $this->check_for_update();
-        
-        if ( ! $update_info ) {
-            return $result;
-        }
-
-        return (object) array(
-            'slug' => $this->plugin_slug,
-            'plugin' => $this->plugin_basename,
-            'name' => 'WordPress Bulk Cleanup Pro',
-            'version' => $update_info['new_version'],
-            'author' => 'S4hk',
-            'author_profile' => 'https://github.com/' . dirname( $this->github_repo ),
-            'requires' => '5.6',
-            'tested' => $update_info['tested'],
-            'requires_php' => $update_info['requires_php'],
-            'download_link' => $update_info['download_url'],
-            'trunk' => $update_info['download_url'],
-            'last_updated' => $update_info['last_updated'],
-            'sections' => array(
-                'description' => 'Advanced bulk cleanup tool for administrators. Delete users by missing names, email domains, or roles, and WooCommerce orders/coupons by status, in safe batches with progress bar.',
-                'installation' => 'Upload the plugin files to the `/wp-content/plugins/wordpress-bulk-cleanup-pro` directory, or install the plugin through the WordPress plugins screen directly. Activate the plugin through the \'Plugins\' screen in WordPress.',
-                'changelog' => $this->get_changelog( $update_info['body'] )
-            ),
+    public function after_install( $response, $hook_extra, $result ) {
+        return $response;
+    }
+}
             'banners' => array(),
             'icons' => array()
         );

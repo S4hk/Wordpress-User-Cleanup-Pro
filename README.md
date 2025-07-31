@@ -2,7 +2,7 @@
 
 A powerful WordPress plugin for administrators to safely delete users in bulk based on various criteria. Designed to handle millions of users with memory-efficient scanning and batch processing.
 
-![WordPress Plugin Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![WordPress Plugin Version](https://img.shields.io/badge/version-1.2.3-blue.svg)
 ![WordPress Compatibility](https://img.shields.io/badge/wordpress-5.6%2B-blue.svg)
 ![PHP Compatibility](https://img.shields.io/badge/php-7.4%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-GPL2%2B-green.svg)

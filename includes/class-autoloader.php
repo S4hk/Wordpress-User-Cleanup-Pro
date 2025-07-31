@@ -24,14 +24,14 @@ class WBCP_Autoloader {
             return;
         }
 
-        $file_name = 'class-' . strtolower( str_replace( array( 'WBCP_', '_' ), array( '', '-' ), $class_name ) ) . '.php';
-        
-        // Define possible paths for class files
-        $possible_paths = array(
-            WBCP_PLUGIN_DIR . 'includes/' . $file_name,
-            WBCP_PLUGIN_DIR . 'includes/admin/' . $file_name,
-            WBCP_PLUGIN_DIR . 'includes/ajax/' . $file_name,
-            WBCP_PLUGIN_DIR . 'includes/scanner/' . $file_name,
+        $file_name = 'class-' . strtolower( str_replace( '_', '-', substr( $class_name, 5 ) ) ) . '.php';
+        $file_path = WBCP_PLUGIN_DIR . 'includes/' . $file_name;
+
+        if ( file_exists( $file_path ) ) {
+            require_once $file_path;
+        }
+    }
+}
             WBCP_PLUGIN_DIR . 'includes/deleter/' . $file_name,
         );
         

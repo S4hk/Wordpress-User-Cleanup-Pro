@@ -4,7 +4,7 @@ Tags: users, cleanup, bulk delete, woocommerce, admin tools, bulk cleanup
 Requires at least: 5.6
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.3
 License: GPL2+
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -70,6 +70,9 @@ Yes, the plugin is designed to handle millions of users and orders through memor
 3. Real-time logging of deletion operations
 
 == Changelog ==
+
+= 1.2.3 =
+* Stable tag updated to 1.2.3
 
 = 1.2.0 =
 * Added WooCommerce coupon deletion functionality
